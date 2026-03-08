@@ -246,6 +246,17 @@ def fetch_traffic_status() -> list[dict]:
             pass
     return _fetch_traffic_local()
 
+def _strip_html(text: str) -> str:
+    """Remove HTML tags and decode entities from text."""
+    if not text:
+        return ""
+    from html import unescape
+    clean = re.sub(r"<[^>]+>", " ", text)
+    clean = unescape(clean)
+    clean = re.sub(r"\s+", " ", clean).strip()
+    return clean
+
+
 def _fetch_news_rss(query: str, limit: int = 10) -> list[dict]:
     """Standalone fallback: search news via Google News RSS."""
     import urllib.parse
@@ -255,12 +266,17 @@ def _fetch_news_rss(query: str, limit: int = 10) -> list[dict]:
         feed = feedparser.parse(url)
         items = []
         for entry in feed.entries[:limit]:
+            raw_summary = entry.get("summary", "") or ""
+            snippet = _strip_html(raw_summary)[:200]
+            # If snippet is just a URL or too short, use title as snippet
+            if snippet.startswith("http") or len(snippet) < 10:
+                snippet = ""
             items.append({
-                "title": entry.get("title", ""),
+                "title": _strip_html(entry.get("title", "")),
                 "link": entry.get("link", ""),
                 "source": entry.get("source", {}).get("title", ""),
                 "published": entry.get("published", ""),
-                "snippet": entry.get("summary", "")[:200] if entry.get("summary") else "",
+                "snippet": snippet,
             })
         return items
     except Exception:

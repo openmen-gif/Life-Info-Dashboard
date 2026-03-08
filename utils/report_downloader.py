@@ -239,7 +239,7 @@ def _extract_news_themes(news: list) -> list[str]:
     stop_words = {"및", "등", "위한", "대한", "관련", "통해", "따라", "에서", "으로", "이번", "최근", "올해"}
     words = []
     for n in news:
-        title = n.get("title", "")
+        title = _clean_text(n.get("title", ""))
         for w in title.split():
             w = w.strip(".,!?()[]\"'·…")
             if len(w) >= 2 and w not in stop_words:
@@ -435,6 +435,25 @@ def _make_comparison_bar_chart(context_list) -> io.BytesIO:
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# Text cleaning helpers
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def _clean_text(text: str) -> str:
+    """Strip HTML tags, decode entities, clean whitespace for report output."""
+    import re
+    from html import unescape
+    if not text:
+        return ""
+    clean = re.sub(r"<[^>]+>", " ", text)
+    clean = unescape(clean)
+    clean = re.sub(r"\s+", " ", clean).strip()
+    # Remove raw URLs masquerading as summaries
+    if clean.startswith("http://") or clean.startswith("https://"):
+        return ""
+    return clean
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # Word helper: hyperlinks & bookmarks
 # ═══════════════════════════════════════════════════════════════════════════════
 
@@ -521,6 +540,49 @@ def _add_internal_link(paragraph, text, bookmark_name):
     paragraph._p.append(hyperlink)
 
 
+def _add_toc_entry(doc, num, title_text, bookmark_name):
+    """Add a TOC entry with number, dotted leader, and internal link."""
+    from docx.oxml.ns import qn
+    from docx.oxml import OxmlElement
+
+    p = doc.add_paragraph()
+    # Set tab stop with dot leader at right margin
+    pPr = p._p.get_or_add_pPr()
+    tabs = OxmlElement("w:tabs")
+    tab = OxmlElement("w:tab")
+    tab.set(qn("w:val"), "right")
+    tab.set(qn("w:leader"), "dot")
+    tab.set(qn("w:pos"), "9072")  # ~16cm right margin
+    tabs.append(tab)
+    pPr.append(tabs)
+
+    # Section number + title as internal link
+    _add_internal_link(p, f"{num}. {title_text}", bookmark_name)
+
+    # Tab + page indicator
+    tab_run = OxmlElement("w:r")
+    tab_char = OxmlElement("w:tab")
+    tab_run.append(tab_char)
+    p._p.append(tab_run)
+
+    # Page number placeholder
+    pg_run = OxmlElement("w:r")
+    rPr = OxmlElement("w:rPr")
+    sz = OxmlElement("w:sz")
+    sz.set(qn("w:val"), "18")
+    rPr.append(sz)
+    color = OxmlElement("w:color")
+    color.set(qn("w:val"), "888888")
+    rPr.append(color)
+    pg_run.append(rPr)
+    t = OxmlElement("w:t")
+    t.text = f"p.{num}"
+    pg_run.append(t)
+    p._p.append(pg_run)
+
+    return p
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # Individual Expert Word Report
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -589,8 +651,7 @@ def _gen_word(query, news, web, trend, now_str) -> bytes:
     sections.append((sec_num, "참고문헌 (References)", "sec_refs"))
 
     for num, title_text, bm in sections:
-        p = doc.add_paragraph()
-        _add_internal_link(p, f"  {num}. {title_text}", bm)
+        _add_toc_entry(doc, num, title_text, bm)
 
     doc.add_paragraph("")
 
@@ -778,9 +839,9 @@ def _gen_word(query, news, web, trend, now_str) -> bytes:
         for idx, n in enumerate(news[:n_display]):
             row = table.rows[idx + 1]
             row.cells[0].text = str(idx + 1)
-            row.cells[1].text = n.get("title", "")[:50]
-            row.cells[2].text = n.get("source", "")
-            snippet = n.get("snippet", "")
+            row.cells[1].text = _clean_text(n.get("title", ""))[:50]
+            row.cells[2].text = _clean_text(n.get("source", ""))
+            snippet = _clean_text(n.get("snippet", ""))
             row.cells[3].text = snippet[:80] + ("..." if len(snippet) > 80 else "")
 
         # ══ News Detail ══
@@ -795,11 +856,11 @@ def _gen_word(query, news, web, trend, now_str) -> bytes:
         )
 
         for i, n in enumerate(news[:10]):
-            title_text = n.get("title", "제목 없음")
-            source = n.get("source", "출처 미상")
+            title_text = _clean_text(n.get("title", "제목 없음"))
+            source = _clean_text(n.get("source", "출처 미상"))
             published = n.get("published", "")
             link = n.get("link", "")
-            snippet = n.get("snippet", "")
+            snippet = _clean_text(n.get("snippet", ""))
 
             doc.add_paragraph("")
             p = doc.add_paragraph()
@@ -812,11 +873,11 @@ def _gen_word(query, news, web, trend, now_str) -> bytes:
 
             # Meta line
             meta_p = doc.add_paragraph()
-            run = meta_p.add_run(f"📰 출처: {source}")
+            run = meta_p.add_run(f"출처: {source}")
             run.font.size = Pt(9)
             run.font.color.rgb = RGBColor(0x66, 0x66, 0x66)
             if published:
-                run = meta_p.add_run(f"  |  📅 {published}")
+                run = meta_p.add_run(f"  |  {published}")
                 run.font.size = Pt(9)
                 run.font.color.rgb = RGBColor(0x66, 0x66, 0x66)
 
@@ -829,16 +890,16 @@ def _gen_word(query, news, web, trend, now_str) -> bytes:
                 run = p.add_run(snippet)
                 run.font.size = Pt(10)
             else:
-                doc.add_paragraph("(기사 요약 데이터 없음 — 원문 링크에서 확인)")
+                doc.add_paragraph("(기사 요약 — 원문 링크에서 전문 확인)")
 
-            # Hyperlink
+            # Hyperlink — show title as clickable link, not raw URL
             if link:
                 link_p = doc.add_paragraph()
-                run = link_p.add_run("🔗 원문 보기: ")
+                run = link_p.add_run("원문 보기: ")
                 run.font.size = Pt(9)
                 run.font.color.rgb = RGBColor(0x55, 0x55, 0x55)
-                display = link[:80] + ("..." if len(link) > 80 else "")
-                _add_hyperlink(link_p, display, link)
+                display_text = title_text[:60] + ("..." if len(title_text) > 60 else "")
+                _add_hyperlink(link_p, display_text, link)
 
     # ══ Web Results ══
     if web:
@@ -853,9 +914,9 @@ def _gen_word(query, news, web, trend, now_str) -> bytes:
         )
 
         for i, w in enumerate(web[:10]):
-            title_text = w.get("title", "제목 없음")
+            title_text = _clean_text(w.get("title", "제목 없음"))
             link = w.get("link", "")
-            snippet = w.get("snippet", "")
+            snippet = _clean_text(w.get("snippet", ""))
 
             p = doc.add_paragraph()
             run = p.add_run(f"[{i + 1}] {title_text}")
@@ -869,9 +930,9 @@ def _gen_word(query, news, web, trend, now_str) -> bytes:
 
             if link:
                 link_p = doc.add_paragraph()
-                run = link_p.add_run("🔗 ")
+                run = link_p.add_run("원문: ")
                 run.font.size = Pt(9)
-                _add_hyperlink(link_p, link[:80] + ("..." if len(link) > 80 else ""), link)
+                _add_hyperlink(link_p, title_text[:60] + ("..." if len(title_text) > 60 else ""), link)
             doc.add_paragraph("")
 
     # ══ Expert Insight ══
@@ -1049,20 +1110,16 @@ def _gen_word_master(context_list, now_str) -> bytes:
     _add_bookmark(toc_h, "toc")
 
     # Section 0: Executive Overview
-    p = doc.add_paragraph()
-    _add_internal_link(p, "  I. 총괄 분석 개요 (Executive Overview)", "sec_overview")
-    p = doc.add_paragraph()
-    _add_internal_link(p, "  II. 분야별 트렌드 비교 차트", "sec_comparison")
+    _add_toc_entry(doc, "I", "총괄 분석 개요 (Executive Overview)", "sec_overview")
+    _add_toc_entry(doc, "II", "분야별 트렌드 비교 차트", "sec_comparison")
 
     for i, item in enumerate(valid_items):
         expert_name = item.get("expert", item.get("query", f"분야 {i + 1}"))
         domain = _match_expert_domain(item.get("query", ""), expert_name)
         bm_name = f"expert_{i}"
-        p = doc.add_paragraph()
-        _add_internal_link(p, f"  {i + 1}. {domain.get('icon', '📊')} {expert_name}", bm_name)
+        _add_toc_entry(doc, i + 1, f"{domain.get('icon', '📊')} {expert_name}", bm_name)
 
-    p = doc.add_paragraph()
-    _add_internal_link(p, "  참고문헌 (References)", "sec_master_refs")
+    _add_toc_entry(doc, "★", "참고문헌 (References)", "sec_master_refs")
 
     doc.add_page_break()
 
@@ -1269,10 +1326,10 @@ def _gen_word_master(context_list, now_str) -> bytes:
             run = p.add_run("▶ 주요 뉴스:")
             run.bold = True
             for n in news[:5]:
-                title_text = n.get("title", "")
+                title_text = _clean_text(n.get("title", ""))
                 link = n.get("link", "")
-                source = n.get("source", "")
-                snippet = n.get("snippet", "")
+                source = _clean_text(n.get("source", ""))
+                snippet = _clean_text(n.get("snippet", ""))
 
                 np_p = doc.add_paragraph()
                 run = np_p.add_run(f"• {title_text}")
@@ -1287,9 +1344,9 @@ def _gen_word_master(context_list, now_str) -> bytes:
 
                 if link:
                     lp = doc.add_paragraph()
-                    run = lp.add_run("  🔗 ")
+                    run = lp.add_run("  원문: ")
                     run.font.size = Pt(8)
-                    _add_hyperlink(lp, link[:70] + ("..." if len(link) > 70 else ""), link)
+                    _add_hyperlink(lp, title_text[:60] + ("..." if len(title_text) > 60 else ""), link)
                     all_refs.append({"title": title_text, "source": source, "link": link, "domain": expert_name})
 
         # Web results
@@ -1299,9 +1356,9 @@ def _gen_word_master(context_list, now_str) -> bytes:
             run = p.add_run("▶ 웹 검색 결과:")
             run.bold = True
             for w in web[:3]:
-                title_text = w.get("title", "")
+                title_text = _clean_text(w.get("title", ""))
                 link = w.get("link", "")
-                snippet = w.get("snippet", "")
+                snippet = _clean_text(w.get("snippet", ""))
 
                 wp = doc.add_paragraph()
                 run = wp.add_run(f"• {title_text}")
@@ -1315,9 +1372,9 @@ def _gen_word_master(context_list, now_str) -> bytes:
 
                 if link:
                     lp = doc.add_paragraph()
-                    run = lp.add_run("  🔗 ")
+                    run = lp.add_run("  원문: ")
                     run.font.size = Pt(8)
-                    _add_hyperlink(lp, link[:70] + ("..." if len(link) > 70 else ""), link)
+                    _add_hyperlink(lp, title_text[:60] + ("..." if len(title_text) > 60 else ""), link)
                     all_refs.append({"title": title_text, "source": "", "link": link, "domain": expert_name})
 
     # ══════════ References ══════════
