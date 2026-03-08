@@ -37,6 +37,7 @@ pages = {
         st.Page("pages/20_Business.py", title="사업/창업", icon="🏢"),
         st.Page("pages/21_Transport.py", title="운송/물류", icon="🚚"),
         st.Page("pages/22_GlobalWar.py", title="해외 분쟁/전쟁", icon="🌍"),
+        st.Page("pages/23_OilExchange.py", title="유가 & 환율 모니터", icon="⛽"),
     ],
     "도구": [
         st.Page("pages/04_Data_Collector.py", title="데이터 수집", icon="📊"),
