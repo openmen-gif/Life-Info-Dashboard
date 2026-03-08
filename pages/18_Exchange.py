@@ -5,4 +5,4 @@ from utils.expert_template import render_expert_page
 
 apply_custom_css()
 
-render_expert_page(title="여행", icon="✈️", default_query="국내 명소 여행지 호캉스 해외 관광 항공권 추천")
+render_expert_page(title="환율 분석", icon="💱", default_query="달러 엔화 글로벌 환율 경제 동향")

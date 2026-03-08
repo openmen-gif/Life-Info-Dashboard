@@ -1,10 +1,8 @@
 # -*- coding: utf-8 -*-
 import streamlit as st
 from utils.css_loader import apply_custom_css
+from utils.expert_template import render_expert_page
 
 apply_custom_css()
 
-st.title("📈 주식 분석 전문가")
-st.markdown("---")
-
-st.info("💡 준비 중입니다. 조만간 주식 분석 관련 데이터 수집 및 분석 AI가 연동될 예정입니다.")
+render_expert_page(title="주식 분석", icon="📈", default_query="국내 코스피 코스닥 미국 증시 주식 시황 분석")

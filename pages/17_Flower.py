@@ -5,4 +5,4 @@ from utils.expert_template import render_expert_page
 
 apply_custom_css()
 
-render_expert_page(title="여행", icon="✈️", default_query="국내 명소 여행지 호캉스 해외 관광 항공권 추천")
+render_expert_page(title="화훼/식물", icon="🌷", default_query="플랜테리어 다육식물 화훼 트렌드")

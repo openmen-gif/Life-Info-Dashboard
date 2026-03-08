@@ -4,10 +4,12 @@ import datetime
 import os
 from utils.config import API_BASE_URL, IS_API_MODE
 
-def download_report_from_api(report_format: str):
+def download_report_from_api(report_format: str, context: dict = None):
     """Call the backend API to generate a report and prompt download."""
     url = f"{API_BASE_URL}/report/generate"
     payload = {"report_type": report_format}
+    if context:
+        payload["context"] = context
     
     try:
         response = requests.post(url, json=payload, stream=True)
@@ -19,14 +21,22 @@ def download_report_from_api(report_format: str):
         st.error(f"보고서 생성 실패: 서버에 연결할 수 없거나 내부 오류가 발생했습니다. ({e})")
         return None
 
-def render_download_buttons():
+def render_download_buttons(context: dict = None):
     """Render a unified report download section."""
     if not IS_API_MODE:
         st.warning("⚠️ API 모드가 비활성화되어 리포트 다운로드를 사용할 수 없습니다.")
         return
         
-    st.markdown("### 📥 통합 보고서 다운로드")
-    st.caption("현재 수집된 날씨, 뉴스, 교통 요약 리포트를 다운로드합니다.")
+    if context:
+        if isinstance(context, list):
+            st.markdown("### 📥 전 분야 마스터 리포트 다운로드")
+            st.caption(f"13개 분야 전문가의 최신 동향 데이터를 총망라한 방대한 마스터 리포트를 다운로드합니다.")
+        else:
+            st.markdown("### 📥 전문가 맞춤형 보고서 다운로드")
+            st.caption(f"'{context.get('query', '분석 키워드')}'에 대한 최신 동향과 뉴스, 웹 검색 결과를 포함한 심층 리포트를 다운로드합니다.")
+    else:
+        st.markdown("### 📥 통합 보고서 다운로드")
+        st.caption("현재 수집된 날씨, 뉴스, 교통 요약 리포트를 다운로드합니다.")
     
     cols = st.columns(3)
     formats = [
@@ -41,10 +51,11 @@ def render_download_buttons():
         with cols[i]:
             if st.button(f"{icon} {label} 생성", key=f"btn_gen_{fmt}"):
                 with st.spinner(f"{label} 생성 중..."):
-                    content = download_report_from_api(fmt)
+                    content = download_report_from_api(fmt, context)
                     if content:
                         ext = ".docx" if fmt == "word" else (".pdf" if fmt == "pdf" else ".xlsx")
-                        filename = f"LifeInfo_Summary_{now_str}{ext}"
+                        prefix = "Expert_Report" if context else "LifeInfo_Summary"
+                        filename = f"{prefix}_{now_str}{ext}"
                         # Need to trigger a download using st.download_button workaround or show it immediately
                         # Because Streamlit's st.download_button requires the data upfront, which blocks until generated.
                         # Instead, if generation was fast, we can save to a temp file or just provide the data.

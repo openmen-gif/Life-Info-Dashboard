@@ -27,6 +27,7 @@ description: 생활정보 에이전트 프레임워크 (총괄 지시서)
 | 14 | 육아/보육 전문가 | life-parenting-advisor.md | 육아정보·보육지원·아동발달·어린이집 |
 | 15 | 문화/예술 전문가 | life-culture-expert.md | 영화·공연·전시·문화생활 |
 | 16 | 반려동물 전문가 | life-pet-advisor.md | 반려동물건강·훈련·사료·동물병원 |
+| 17 | 화훼/식물 전문가 | life-flower-expert.md | 꽃말·반려식물·가드닝·화분 |
 
 ## 운영 원칙
 
@@ -48,6 +49,7 @@ description: 생활정보 에이전트 프레임워크 (총괄 지시서)
 - "아이", "육아", "보육", "장난감", "어린이집" → life-parenting-advisor
 - "영화", "공연", "전시회", "뮤지컬", "문화" → life-culture-expert
 - "강아지", "고양이", "반려동물", "사료", "동물병원" → life-pet-advisor
+- "꽃", "화분", "식물", "다육이", "가드닝", "꽃말" → life-flower-expert
 
 ### 2. 크로스 도메인 협업
 복합 질문은 다수 전문가를 동시 활성화한다.

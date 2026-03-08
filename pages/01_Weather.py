@@ -2,20 +2,42 @@
 import streamlit as st
 from utils.css_loader import apply_custom_css
 from utils.data_fetcher import fetch_weather
+import streamlit.components.v1 as components
 
 apply_custom_css()
 
-st.title("🌤️ 날씨 정보")
+st.title("🌤️ 날씨 정보 및 기상 레이더")
 st.markdown("---")
 
 # ── Settings ─────────────────────────────────────────────────────────────
-col_set1, col_set2 = st.columns([2, 1])
+col_set1, col_set2, col_set3 = st.columns([2, 1, 1])
 with col_set1:
-    city = st.text_input("도시명 (영문)", value="Seoul", placeholder="Seoul, Busan, Incheon...")
+    city_input = st.text_input("도시명", value="서울", placeholder="서울, 부산, 인천, Seoul, Busan...")
 with col_set2:
     api_key = st.text_input("OpenWeatherMap API Key", type="password", placeholder="선택사항")
+with col_set3:
+    st.write("") # Vertical alignment spacing
+    st.write("")
+    update_btn = st.button("날씨 조회 및 갱신", use_container_width=True)
 
-weather = fetch_weather(city=city, api_key=api_key if api_key else None)
+# State Management for city changes
+if "last_city" not in st.session_state:
+    st.session_state["last_city"] = ""
+
+# Fetch if button clicked OR city text input changed OR init
+should_fetch = False
+if "weather_data" not in st.session_state:
+    should_fetch = True
+if update_btn:
+    should_fetch = True
+if city_input != st.session_state["last_city"]:
+    should_fetch = True
+
+if should_fetch:
+    st.session_state["weather_data"] = fetch_weather(city=city_input, api_key=api_key if api_key else None)
+    st.session_state["last_city"] = city_input
+
+weather = st.session_state["weather_data"]
 
 # ── Current Weather ──────────────────────────────────────────────────────
 st.markdown("### 현재 날씨")
@@ -34,11 +56,51 @@ if weather.get("_sample"):
 
 st.markdown("---")
 
-# ── Multi-city comparison ────────────────────────────────────────────────
-st.markdown("### 주요 도시 비교")
-cities = ["Seoul", "Busan", "Daegu", "Incheon", "Gwangju", "Daejeon"]
-cols = st.columns(len(cities))
-for i, c in enumerate(cities):
-    w = fetch_weather(city=c, api_key=api_key if api_key else None)
-    with cols[i]:
-        st.metric(c, f"{w['temp']}°C", f"{w['desc']}")
+# ── Multi-city comparison & Radar Tabs ───────────────────────────────────
+lat = weather.get("lat", 36.5)
+lon = weather.get("lon", 127.5)
+
+tab1, tab2, tab3, tab4 = st.tabs(["📊 주요 도시 요약", "🇰🇷 국내 기상 레이더", "🌀 Windy (해당 지역 레이더)", "🌊 Windfinder (해당 지역 맵)"])
+
+with tab1:
+    st.markdown("### 주요 도시 비교")
+    cities = ["Seoul", "Busan", "Daegu", "Incheon", "Gwangju", "Daejeon"]
+    cols = st.columns(len(cities))
+    for i, c in enumerate(cities):
+        w = fetch_weather(city=c, api_key=api_key if api_key else None)
+        with cols[i]:
+            st.metric(c, f"{w['temp']}°C", f"{w['desc']}")
+
+with tab2:
+    st.markdown(f"### 🇰🇷 비/눈 기상 레이더 - {weather['city']}")
+    st.info("선택한 도시 주변의 실시간 비/눈(강수량) 레이더 영상입니다. (제공: Windy Radar Overlay)")
+    html_radar = f"""
+        <span style="display:none" data-city="{weather['city']}-{lat}-{lon}-radar"></span>
+        <iframe width="100%" height="600"
+            src="https://embed.windy.com/embed.html?type=map&location=coordinates&metricRain=mm&metricTemp=%C2%B0C&metricWind=m/s&zoom=8&overlay=radar&product=radar&level=surface&lat={lat}&lon={lon}"
+            frameborder="0"></iframe>
+    """
+    components.html(html_radar, height=620)
+
+with tab3:
+    st.markdown(f"### 🌀 Windy 기상 레이더 - {weather['city']}")
+    st.info("실시간 구름 흐름, 비/눈 예측, 바람 방향 등 해당 지역 기상 상황을 동적으로 확인할 수 있습니다. 지도를 마우스로 움직이고 확대/축소해 보세요.")
+    # Unique key via hidden span forces Streamlit to re-render iframe when city/coords change
+    html_windy = f"""
+        <span style="display:none" data-city="{weather['city']}-{lat}-{lon}"></span>
+        <iframe width="100%" height="600"
+            src="https://embed.windy.com/embed.html?type=map&location=coordinates&metricRain=mm&metricTemp=%C2%B0C&metricWind=m/s&zoom=8&overlay=wind&product=ecmwf&level=surface&lat={lat}&lon={lon}"
+            frameborder="0"></iframe>
+    """
+    components.html(html_windy, height=620)
+
+with tab4:
+    st.markdown(f"### 🌊 Windfinder 바람/파도 범위 - {weather['city']}")
+    st.info("정밀한 풍속, 조류, 파도 높이 등의 관측에 특화된 지도입니다. 우측 상단의 메뉴를 통해 보고자 하는 필터를 변경할 수 있습니다.")
+    html_windfinder = f"""
+        <span style="display:none" data-city="{weather['city']}-{lat}-{lon}"></span>
+        <iframe width="100%" height="600"
+            src="https://ko.windfinder.com/weather-maps/forecast/wind/sea_of_japan#{8}/{lat}/{lon}"
+            frameborder="0"></iframe>
+    """
+    components.html(html_windfinder, height=620)

@@ -31,6 +31,12 @@ pages = {
         st.Page("pages/14_Parenting.py", title="육아/보육", icon="👶"),
         st.Page("pages/15_Culture.py", title="문화/예술", icon="🎭"),
         st.Page("pages/16_Pet.py", title="반려동물", icon="🐾"),
+        st.Page("pages/17_Flower.py", title="화훼/식물", icon="🌷"),
+        st.Page("pages/18_Exchange.py", title="환율 분석", icon="💱"),
+        st.Page("pages/19_Customs.py", title="관세/무역", icon="🚢"),
+        st.Page("pages/20_Business.py", title="사업/창업", icon="🏢"),
+        st.Page("pages/21_Transport.py", title="운송/물류", icon="🚚"),
+        st.Page("pages/22_GlobalWar.py", title="해외 분쟁/전쟁", icon="🌍"),
     ],
     "도구": [
         st.Page("pages/04_Data_Collector.py", title="데이터 수집", icon="📊"),
