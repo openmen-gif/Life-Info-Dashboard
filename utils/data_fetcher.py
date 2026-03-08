@@ -246,8 +246,29 @@ def fetch_traffic_status() -> list[dict]:
             pass
     return _fetch_traffic_local()
 
+def _fetch_news_rss(query: str, limit: int = 10) -> list[dict]:
+    """Standalone fallback: search news via Google News RSS."""
+    import urllib.parse
+    encoded = urllib.parse.quote(query)
+    url = f"https://news.google.com/rss/search?q={encoded}&hl=ko&gl=KR&ceid=KR:ko"
+    try:
+        feed = feedparser.parse(url)
+        items = []
+        for entry in feed.entries[:limit]:
+            items.append({
+                "title": entry.get("title", ""),
+                "link": entry.get("link", ""),
+                "source": entry.get("source", {}).get("title", ""),
+                "published": entry.get("published", ""),
+                "snippet": entry.get("summary", "")[:200] if entry.get("summary") else "",
+            })
+        return items
+    except Exception:
+        return []
+
+
 def fetch_web_search(query: str, limit: int = 10) -> list[dict]:
-    """Fetch web search results from API with domain filtering and dedup."""
+    """Fetch web search results. API mode uses backend, standalone uses RSS."""
     results = []
     if IS_API_MODE:
         try:
@@ -256,13 +277,15 @@ def fetch_web_search(query: str, limit: int = 10) -> list[dict]:
             results = r.json().get("results", [])
         except Exception:
             pass
+    if not results:
+        results = _fetch_news_rss(query, limit=limit)
     domain = _detect_domain(query)
     results = _filter_by_domain(results, domain, title_key="title")
     results = _deduplicate_news(results, title_key="title")
     return results
 
 def fetch_news_search(query: str, limit: int = 10) -> list[dict]:
-    """Fetch news search results from API with domain filtering and dedup."""
+    """Fetch news search results. API mode uses backend, standalone uses RSS."""
     news = []
     if IS_API_MODE:
         try:
@@ -271,6 +294,8 @@ def fetch_news_search(query: str, limit: int = 10) -> list[dict]:
             news = r.json().get("news", [])
         except Exception:
             pass
+    if not news:
+        news = _fetch_news_rss(query, limit=limit)
     domain = _detect_domain(query)
     news = _filter_by_domain(news, domain, title_key="title")
     news = _deduplicate_news(news, title_key="title")
