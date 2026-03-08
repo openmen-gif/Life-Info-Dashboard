@@ -99,13 +99,12 @@ def _make_trend_chart(trend, query) -> io.BytesIO:
     import matplotlib.pyplot as plt
     import matplotlib.font_manager as fm
 
-    # Try Korean font
-    for fname in ["Malgun Gothic", "NanumGothic", "Noto Sans CJK KR", "AppleGothic"]:
-        try:
+    # Try Korean font — check if actually available
+    available_fonts = {f.name for f in fm.fontManager.ttflist}
+    for fname in ["Malgun Gothic", "NanumGothic", "Noto Sans CJK KR", "AppleGothic", "DejaVu Sans"]:
+        if fname in available_fonts:
             plt.rcParams["font.family"] = fname
             break
-        except Exception:
-            continue
     plt.rcParams["axes.unicode_minus"] = False
 
     dates = [str(r.get("Date", "")) for r in trend]
@@ -338,22 +337,220 @@ def _gen_word(query, news, web, trend, now_str) -> bytes:
     return buf.getvalue()
 
 
+def _gen_word_master(context_list, now_str) -> bytes:
+    """Generate a master Word report with per-expert sections and individual charts."""
+    try:
+        from docx import Document
+        from docx.shared import Inches, Pt, RGBColor
+        from docx.enum.text import WD_ALIGN_PARAGRAPH
+    except ImportError:
+        # Fallback to text
+        lines = ["전 분야 마스터 리포트", f"생성일시: {now_str}", "=" * 60, ""]
+        for item in context_list:
+            if not isinstance(item, dict):
+                continue
+            lines.append(f"■ {item.get('expert', item.get('query', ''))}")
+            for n in item.get("news", [])[:3]:
+                lines.append(f"  - {n.get('title', '')} | {n.get('link', '')}")
+            lines.append("")
+        return "\n".join(lines).encode("utf-8")
+
+    doc = Document()
+
+    # ── Title ──
+    title = doc.add_heading("전 분야 마스터 리포트", level=1)
+    title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+
+    meta = doc.add_paragraph()
+    meta.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    run = meta.add_run(f"생성일시: {now_str}  |  {len(context_list)}개 분야 종합 분석")
+    run.font.size = Pt(10)
+    run.font.color.rgb = RGBColor(0x88, 0x88, 0x88)
+
+    # ── Table of Contents ──
+    doc.add_heading("목차", level=2)
+    for i, item in enumerate(context_list):
+        if not isinstance(item, dict):
+            continue
+        expert_name = item.get("expert", item.get("query", f"분야 {i+1}"))
+        doc.add_paragraph(f"{i+1}. {expert_name}", style="List Number")
+
+    doc.add_page_break()
+
+    # ── Per-expert sections ──
+    all_refs = []
+    for i, item in enumerate(context_list):
+        if not isinstance(item, dict):
+            continue
+
+        expert_name = item.get("expert", item.get("query", f"분야 {i+1}"))
+        query = item.get("query", expert_name)
+        news = item.get("news", [])
+        web = item.get("web", [])
+        trend = item.get("df", [])
+
+        doc.add_heading(f"{i+1}. {expert_name}", level=2)
+
+        # Summary
+        total_news = len(news)
+        total_web = len(web)
+        summary = f"'{query}' 키워드 기반 분석 — 뉴스 {total_news}건, 웹 {total_web}건 수집."
+        if trend and len(trend) >= 2:
+            first_val = trend[0].get("Trend", 0)
+            last_val = trend[-1].get("Trend", 0)
+            if first_val > 0:
+                change_pct = ((last_val - first_val) / first_val) * 100
+                direction = "상승" if change_pct > 0 else "하락"
+                summary += f" 트렌드: {first_val:,.0f}→{last_val:,.0f} ({abs(change_pct):.1f}% {direction})"
+        doc.add_paragraph(summary)
+
+        # Chart
+        if trend:
+            try:
+                chart_buf = _make_trend_chart(trend, query)
+                doc.add_picture(chart_buf, width=Inches(5.0))
+                last_p = doc.paragraphs[-1]
+                last_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            except Exception as e:
+                doc.add_paragraph(f"[차트 생성 실패: {e}]")
+
+        # News
+        if news:
+            p = doc.add_paragraph()
+            run = p.add_run("주요 뉴스:")
+            run.bold = True
+            for n in news[:5]:
+                title_text = n.get("title", "")
+                link = n.get("link", "")
+                source = n.get("source", "")
+                np = doc.add_paragraph()
+                run = np.add_run(f"• {title_text}")
+                run.font.size = Pt(10)
+                if link:
+                    np2 = doc.add_paragraph()
+                    run2 = np2.add_run("  → ")
+                    run2.font.size = Pt(8)
+                    _add_hyperlink(np2, link[:70] + ("..." if len(link) > 70 else ""), link)
+                    all_refs.append({"title": title_text, "source": source, "link": link})
+
+        # Web
+        if web:
+            p = doc.add_paragraph()
+            run = p.add_run("웹 검색 결과:")
+            run.bold = True
+            for w in web[:3]:
+                title_text = w.get("title", "")
+                link = w.get("link", "")
+                wp = doc.add_paragraph()
+                run = wp.add_run(f"• {title_text}")
+                run.font.size = Pt(10)
+                if link:
+                    wp2 = doc.add_paragraph()
+                    run2 = wp2.add_run("  → ")
+                    run2.font.size = Pt(8)
+                    _add_hyperlink(wp2, link[:70] + ("..." if len(link) > 70 else ""), link)
+                    all_refs.append({"title": title_text, "source": "", "link": link})
+
+        if i < len(context_list) - 1:
+            doc.add_page_break()
+
+    # ── References ──
+    doc.add_heading("참고문헌 (References)", level=2)
+    doc.add_paragraph(f"본 리포트에 인용된 총 {len(all_refs)}건의 원문 링크입니다.")
+    for idx, ref in enumerate(all_refs):
+        if ref.get("link"):
+            p = doc.add_paragraph()
+            run = p.add_run(f"[{idx+1}] ")
+            run.font.size = Pt(8)
+            label = ref.get("title", "")
+            if ref.get("source"):
+                label += f" — {ref['source']}"
+            _add_hyperlink(p, label[:100], ref["link"])
+
+    # ── Footer ──
+    doc.add_paragraph("")
+    footer = doc.add_paragraph()
+    footer.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    run = footer.add_run(f"— 전 분야 마스터 리포트 자동 생성 ({now_str}) —")
+    run.font.size = Pt(8)
+    run.font.color.rgb = RGBColor(0xAA, 0xAA, 0xAA)
+
+    buf = io.BytesIO()
+    doc.save(buf)
+    return buf.getvalue()
+
+
+def _gen_text_master(context_list, now_str) -> bytes:
+    """Generate master report in plain text."""
+    lines = ["전 분야 마스터 리포트", f"생성일시: {now_str}", "=" * 60, ""]
+    for i, item in enumerate(context_list):
+        if not isinstance(item, dict):
+            continue
+        expert_name = item.get("expert", item.get("query", f"분야 {i+1}"))
+        query = item.get("query", expert_name)
+        lines.append(f"{'─' * 40}")
+        lines.append(f"■ [{i+1}] {expert_name}")
+        lines.append(f"  검색어: {query}")
+        for row in item.get("df", []):
+            lines.append(f"  {row.get('Date', '')} → {row.get('Trend', '')}")
+        for n in item.get("news", [])[:5]:
+            lines.append(f"  뉴스: {n.get('title', '')} ({n.get('source', '')})")
+            lines.append(f"        {n.get('link', '')}")
+        for w in item.get("web", [])[:3]:
+            lines.append(f"  웹: {w.get('title', '')}")
+            lines.append(f"      {w.get('link', '')}")
+        lines.append("")
+    return "\n".join(lines).encode("utf-8")
+
+
+def _gen_excel_master(context_list, now_str) -> bytes:
+    """Generate master report in Excel with one sheet per expert."""
+    try:
+        import xlsxwriter
+        buf = io.BytesIO()
+        wb = xlsxwriter.Workbook(buf)
+        bold = wb.add_format({"bold": True})
+        for i, item in enumerate(context_list):
+            if not isinstance(item, dict):
+                continue
+            name = item.get("expert", f"분야{i+1}")[:31]  # Excel sheet name limit
+            ws = wb.add_worksheet(name)
+            ws.write(0, 0, f"분야: {name}", bold)
+            ws.write(1, 0, f"검색어: {item.get('query', '')}")
+            ws.write(2, 0, f"생성일시: {now_str}")
+            ws.write(4, 0, "날짜", bold)
+            ws.write(4, 1, "트렌드", bold)
+            for j, row in enumerate(item.get("df", [])):
+                ws.write(5 + j, 0, str(row.get("Date", "")))
+                ws.write(5 + j, 1, row.get("Trend", 0))
+            row_offset = 5 + len(item.get("df", [])) + 1
+            ws.write(row_offset, 0, "뉴스 제목", bold)
+            ws.write(row_offset, 1, "출처", bold)
+            ws.write(row_offset, 2, "링크", bold)
+            for j, n in enumerate(item.get("news", [])):
+                ws.write(row_offset + 1 + j, 0, n.get("title", ""))
+                ws.write(row_offset + 1 + j, 1, n.get("source", ""))
+                ws.write(row_offset + 1 + j, 2, n.get("link", ""))
+        wb.close()
+        return buf.getvalue()
+    except ImportError:
+        return _gen_text_master(context_list, now_str)
+
+
 def _generate_local_report(report_format: str, context=None) -> bytes:
     """Generate report locally (standalone mode). context can be dict or list."""
     now_str = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
     # Master report: context is a list of dicts (one per expert domain)
     if isinstance(context, list):
-        query = "전 분야 마스터 리포트"
-        news = []
-        web = []
-        trend = []
-        for item in context:
-            if isinstance(item, dict):
-                news.extend(item.get("news", []))
-                web.extend(item.get("web", []))
-                trend.extend(item.get("df", []))
-    elif isinstance(context, dict):
+        if report_format == "word":
+            return _gen_word_master(context, now_str)
+        elif report_format == "excel":
+            return _gen_excel_master(context, now_str)
+        else:
+            return _gen_text_master(context, now_str)
+
+    if isinstance(context, dict):
         query = context.get("query", "생활정보")
         news = context.get("news", [])
         web = context.get("web", [])
