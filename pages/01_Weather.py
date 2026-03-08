@@ -94,11 +94,11 @@ with tab2:
     st.markdown("**기상청 공식 바로가기**")
     kma_cols = st.columns(3)
     with kma_cols[0]:
-        st.link_button("🌧️ 기상청 강수 레이더", "https://www.weather.go.kr/w/radar/main.do", use_container_width=True)
+        st.link_button("🌧️ 기상청 강수 레이더", "https://www.weather.go.kr/w/weather/radar/radar.do", use_container_width=True)
     with kma_cols[1]:
-        st.link_button("🌀 기상청 위성 영상", "https://www.weather.go.kr/w/satellite/main.do", use_container_width=True)
+        st.link_button("🌀 기상청 위성 영상", "https://www.weather.go.kr/w/weather/satellite/gk2a.do", use_container_width=True)
     with kma_cols[2]:
-        st.link_button("⚡ 기상청 낙뢰 현황", "https://www.weather.go.kr/w/lightning/main.do", use_container_width=True)
+        st.link_button("⚡ 기상청 낙뢰 현황", "https://www.weather.go.kr/w/weather/radar/lgt.do", use_container_width=True)
 
 with tab3:
     st.markdown(f"### 🌀 Windy 기상 레이더 - {weather['city']}")
