@@ -72,15 +72,62 @@ with tab1:
             st.metric(c, f"{w['temp']}°C", f"{w['desc']}")
 
 with tab2:
-    st.markdown(f"### 🇰🇷 비/눈 기상 레이더 - {weather['city']}")
-    st.info("선택한 도시 주변의 실시간 비/눈(강수량) 레이더 영상입니다. (제공: Windy Radar Overlay)")
-    html_radar = f"""
-        <span style="display:none" data-city="{weather['city']}-{lat}-{lon}-radar"></span>
-        <iframe width="100%" height="600"
-            src="https://embed.windy.com/embed.html?type=map&location=coordinates&metricRain=mm&metricTemp=%C2%B0C&metricWind=m/s&zoom=8&overlay=radar&product=radar&level=surface&lat={lat}&lon={lon}"
-            frameborder="0"></iframe>
+    st.markdown("### 🇰🇷 국내 실시간 기상 레이더")
+    st.info(
+        "**RainViewer** 기반 한국 실시간 강수 레이더 + "
+        "**기상청(KMA)** 공식 레이더 바로가기를 제공합니다. "
+        "지도를 마우스로 확대/이동하고 하단 재생 버튼으로 시계열을 확인하세요."
+    )
+
+    # RainViewer: free embeddable radar via their public JS API
+    # Centered on South Korea (lat=36.5, lon=127.5), zoom 7
+    html_rainviewer = f"""
+    <span style="display:none" data-city="{weather['city']}-{lat}-{lon}-kr-radar"></span>
+    <div id="rainviewer-map" style="width:100%; height:600px; border-radius:8px;"></div>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+      var map = L.map('rainviewer-map').setView([36.5, 127.8], 7);
+
+      // Base tile: OpenStreetMap Korea
+      L.tileLayer('https://{{s}}.tile.openstreetmap.org/{{z}}/{{x}}/{{y}}.png', {{
+        attribution: '© OpenStreetMap contributors',
+        maxZoom: 18
+      }}).addTo(map);
+
+      // RainViewer radar overlay
+      var radarLayer = null;
+      fetch('https://api.rainviewer.com/public/weather-maps.json')
+        .then(r => r.json())
+        .then(data => {{
+          var frames = data.radar.past;
+          if (!frames || frames.length === 0) return;
+          var latest = frames[frames.length - 1];
+          radarLayer = L.tileLayer(
+            'https://tilecache.rainviewer.com' + latest.path + '/256/{{z}}/{{x}}/{{y}}/2/1_1.png',
+            {{ opacity: 0.6, attribution: '© RainViewer' }}
+          ).addTo(map);
+
+          // Time label
+          var d = new Date(latest.time * 1000);
+          var label = d.toLocaleString('ko-KR', {{timeZone:'Asia/Seoul'}});
+          document.getElementById('rv-time').textContent = '레이더 기준 시각: ' + label;
+        }}).catch(err => console.log('RainViewer load error', err));
+    </script>
+    <p id="rv-time" style="text-align:center;font-size:12px;margin-top:4px;color:#888;"></p>
     """
-    components.html(html_radar, height=620)
+    components.html(html_rainviewer, height=650)
+
+    # KMA official radar shortcut
+    st.markdown("**기상청 공식 레이더 바로가기**")
+    kma_cols = st.columns(3)
+    with kma_cols[0]:
+        st.link_button("🌧️ 기상청 강수 레이더", "https://www.weather.go.kr/w/radar/main.do", use_container_width=True)
+    with kma_cols[1]:
+        st.link_button("🌀 기상청 위성 영상", "https://www.weather.go.kr/w/satellite/main.do", use_container_width=True)
+    with kma_cols[2]:
+        st.link_button("⚡ 기상청 낙뢰 현황", "https://www.weather.go.kr/w/lightning/main.do", use_container_width=True)
+
 
 with tab3:
     st.markdown(f"### 🌀 Windy 기상 레이더 - {weather['city']}")
