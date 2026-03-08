@@ -1,0 +1,4 @@
+__pycache__/
+*.pyc
+collected_data/
+*.lock
