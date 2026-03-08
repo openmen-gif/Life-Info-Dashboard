@@ -309,7 +309,7 @@ def _make_trend_chart(trend, query, stats=None) -> io.BytesIO:
     import matplotlib.font_manager as fm
 
     available_fonts = {f.name for f in fm.fontManager.ttflist}
-    for fname in ["Malgun Gothic", "NanumGothic", "Noto Sans CJK KR", "AppleGothic", "DejaVu Sans"]:
+    for fname in ["Malgun Gothic", "NanumGothic", "Noto Sans KR", "Noto Sans CJK KR", "Noto Sans CJK JP", "AppleGothic", "DejaVu Sans"]:
         if fname in available_fonts:
             plt.rcParams["font.family"] = fname
             break
@@ -379,7 +379,7 @@ def _make_comparison_bar_chart(context_list) -> io.BytesIO:
     import matplotlib.font_manager as fm
 
     available_fonts = {f.name for f in fm.fontManager.ttflist}
-    for fname in ["Malgun Gothic", "NanumGothic", "Noto Sans CJK KR", "AppleGothic", "DejaVu Sans"]:
+    for fname in ["Malgun Gothic", "NanumGothic", "Noto Sans KR", "Noto Sans CJK KR", "Noto Sans CJK JP", "AppleGothic", "DejaVu Sans"]:
         if fname in available_fonts:
             plt.rcParams["font.family"] = fname
             break
