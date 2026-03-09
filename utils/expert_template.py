@@ -285,7 +285,7 @@ def render_expert_page(
         with st.spinner("최신 트렌드 및 뉴스 수집 중..."):
             web_results = fetch_web_search(query, limit=5)
             news_results = fetch_news_search(query, limit=8)
-            youtube_results = fetch_youtube_search(query, limit=4)
+            youtube_results = fetch_youtube_search(query, limit=8)
 
             from utils.data_fetcher import fetch_stock_data as _fsd
 
