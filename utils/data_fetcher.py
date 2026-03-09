@@ -337,6 +337,18 @@ def _strip_html(text: str) -> str:
     return clean
 
 
+def _is_similar(text1: str, text2: str, threshold: float = 0.6) -> bool:
+    """Check if two texts are too similar by word overlap."""
+    if not text1 or not text2:
+        return False
+    w1 = set(re.sub(r"[^\w\s]", "", text1).split())
+    w2 = set(re.sub(r"[^\w\s]", "", text2).split())
+    if not w1 or not w2:
+        return False
+    overlap = len(w1 & w2)
+    return overlap / min(len(w1), len(w2)) >= threshold
+
+
 def _fetch_news_ddg(query: str, limit: int = 10) -> list[dict]:
     """Fetch news via DuckDuckGo — provides real article snippets."""
     try:
@@ -347,8 +359,8 @@ def _fetch_news_ddg(query: str, limit: int = 10) -> list[dict]:
         for r in results:
             title = _strip_html(r.get("title", ""))
             body = _strip_html(r.get("body", ""))
-            # Ensure snippet is different from title
-            if body and body != title and not body.startswith(title[:20]):
+            # Ensure snippet is genuinely different from title
+            if body and not _is_similar(body, title):
                 snippet = body[:200]
             else:
                 snippet = ""
@@ -375,8 +387,8 @@ def _fetch_news_rss(query: str, limit: int = 10) -> list[dict]:
         for entry in feed.entries[:limit]:
             raw_title = _strip_html(entry.get("title", ""))
             raw_summary = _strip_html(entry.get("summary", "") or "")[:200]
-            # Google News RSS summary often equals title — detect and clear
-            if raw_summary and raw_summary != raw_title and not raw_summary.startswith(raw_title[:20]):
+            # Google News RSS summary often equals title — word-overlap check
+            if raw_summary and not _is_similar(raw_summary, raw_title):
                 snippet = raw_summary
             else:
                 snippet = ""
@@ -404,7 +416,7 @@ def _fetch_web_ddg(query: str, limit: int = 10) -> list[dict]:
         for r in results:
             title = _strip_html(r.get("title", ""))
             body = _strip_html(r.get("body", ""))
-            if body and body != title:
+            if body and not _is_similar(body, title):
                 snippet = body[:200]
             else:
                 snippet = ""

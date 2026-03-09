@@ -176,6 +176,21 @@ def _match_expert_domain(query: str, expert_name: str = "") -> dict:
     }
 
 
+def _is_text_similar(text1: str, text2: str, threshold: float = 0.6) -> bool:
+    """Check if two texts are too similar by word overlap ratio."""
+    if not text1 or not text2:
+        return False
+    # Normalize: remove punctuation, lowercase
+    import re as _re
+    norm1 = _re.sub(r"[^\w\s]", "", text1).split()
+    norm2 = _re.sub(r"[^\w\s]", "", text2).split()
+    if not norm1 or not norm2:
+        return False
+    set1, set2 = set(norm1), set(norm2)
+    overlap = len(set1 & set2)
+    return overlap / min(len(set1), len(set2)) >= threshold
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # Statistical helpers
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -1281,14 +1296,10 @@ def _gen_word(query, news, web, trend, now_str, table_data=None) -> bytes:
             row.cells[1].text = title_text[:60]
             row.cells[2].text = _clean_text(n.get("source", ""))
             snippet = _clean_text(n.get("snippet", ""))
-            # Prevent snippet = title duplication
-            if snippet and len(title_text) > 10 and (
-                snippet == title_text
-                or title_text.startswith(snippet[:20])
-                or snippet.startswith(title_text[:20])
-            ):
+            # Prevent snippet ≈ title duplication (word-overlap check)
+            if snippet and _is_text_similar(snippet, title_text):
                 snippet = ""
-            row.cells[3].text = snippet[:100] + ("..." if len(snippet) > 100 else "")
+            row.cells[3].text = snippet[:100] + ("..." if len(snippet) > 100 else "") if snippet else "원문 참조"
 
         # Hyperlinks below table (compact)
         doc.add_paragraph("")
@@ -1816,6 +1827,8 @@ def _gen_word_master(context_list, now_str) -> bytes:
                 link = n.get("link", "")
                 source = _clean_text(n.get("source", ""))
                 snippet = _clean_text(n.get("snippet", ""))
+                if snippet and _is_text_similar(snippet, title_text):
+                    snippet = ""
 
                 np_p = doc.add_paragraph()
                 run = np_p.add_run(f"• {title_text}")
@@ -1958,9 +1971,10 @@ def _gen_text(query, news, web, trend, now_str, table_data=None) -> bytes:
     if news:
         lines.append("[ 관련 뉴스 ]")
         for n in news[:10]:
-            lines.append(f"  - {n.get('title', '')} ({n.get('source', '')})")
+            title_t = n.get('title', '')
+            lines.append(f"  - {title_t} ({n.get('source', '')})")
             snippet = n.get('snippet', '')
-            if snippet:
+            if snippet and not _is_text_similar(snippet, title_t):
                 lines.append(f"    요약: {snippet[:100]}")
             lines.append(f"    링크: {n.get('link', '')}")
         flow = _news_flow_summary(news, query)
@@ -2096,10 +2110,14 @@ def _gen_excel(query, news, web, trend, now_str, table_data=None) -> bytes:
         ws2.write(0, 3, "요약", header_fmt)
         ws2.write(0, 4, "링크", header_fmt)
         for i, n in enumerate(news or []):
+            _title = n.get("title", "")
+            _snip = n.get("snippet", "")
+            if _snip and _is_text_similar(_snip, _title):
+                _snip = ""
             ws2.write(1 + i, 0, i + 1)
-            ws2.write(1 + i, 1, n.get("title", ""))
+            ws2.write(1 + i, 1, _title)
             ws2.write(1 + i, 2, n.get("source", ""))
-            ws2.write(1 + i, 3, n.get("snippet", ""))
+            ws2.write(1 + i, 3, _snip or "원문 참조")
             ws2.write(1 + i, 4, n.get("link", ""))
         ws2.set_column(1, 1, 40)
         ws2.set_column(3, 3, 50)
@@ -2195,9 +2213,13 @@ def _gen_excel_master(context_list, now_str) -> bytes:
             ws.write(row_offset, 2, "요약", header_fmt)
             ws.write(row_offset, 3, "링크", header_fmt)
             for j, n in enumerate(item.get("news", [])):
-                ws.write(row_offset + 1 + j, 0, n.get("title", ""))
+                _t = n.get("title", "")
+                _s = n.get("snippet", "")
+                if _s and _is_text_similar(_s, _t):
+                    _s = ""
+                ws.write(row_offset + 1 + j, 0, _t)
                 ws.write(row_offset + 1 + j, 1, n.get("source", ""))
-                ws.write(row_offset + 1 + j, 2, n.get("snippet", ""))
+                ws.write(row_offset + 1 + j, 2, _s or "원문 참조")
                 ws.write(row_offset + 1 + j, 3, n.get("link", ""))
             ws.set_column(0, 0, 30)
             ws.set_column(2, 2, 50)
