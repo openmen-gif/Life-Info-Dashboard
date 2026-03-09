@@ -35,9 +35,10 @@ render_download_buttons()
 
 # ── 관련 YouTube 영상 ─────────────────────────────────────────────────────
 st.markdown("---")
-st.markdown("## 🎬 오늘의 생활정보 YouTube 영상")
+_today_str = datetime.datetime.now().strftime("%Y년 %m월 %d일")
+st.markdown(f"## 🎬 {_today_str} 생활정보 YouTube 영상")
 from utils.expert_template import render_youtube_section
-_yt_home = render_youtube_section("오늘 생활정보 뉴스 경제 날씨", sort="latest")
+_yt_home = render_youtube_section(f"{_today_str} 오늘 뉴스 경제 생활 날씨 시사", sort="latest")
 
 st.markdown("---")
 st.info("💡 왼쪽 사이드바에서 **날씨**, **뉴스**, **교통** 상세 페이지를 확인하세요.")

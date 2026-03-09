@@ -126,9 +126,11 @@ with tab4:
 
 # ── 관련 YouTube 영상 ─────────────────────────────────────────────────────
 st.markdown("---")
-st.markdown("## 🎬 날씨·기상 관련 YouTube 영상")
+import datetime as _dt
+_today_w = _dt.datetime.now().strftime("%Y년 %m월 %d일")
+st.markdown(f"## 🎬 {_today_w} 날씨·기상 YouTube 영상")
 from utils.expert_template import render_youtube_section
-_yt_weather = render_youtube_section("오늘 날씨 기상 예보", sort="latest")
+_yt_weather = render_youtube_section(f"{_today_w} 오늘 날씨 기상 예보 일기예보", sort="latest")
 
 # ── 보고서 다운로드 ────────────────────────────────────────────────────────
 st.markdown("---")
