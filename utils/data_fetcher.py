@@ -549,15 +549,12 @@ def fetch_youtube_search(query: str, limit: int = 12, timelimit: str | None = No
     """Fetch YouTube videos via DuckDuckGo videos search (no API key).
 
     Args:
-        timelimit: None (all), "d" (last day), "w" (last week), "m" (last month)
+        timelimit: ignored (kept for API compat). Sorting handles recency.
     """
     try:
         from duckduckgo_search import DDGS
-        kwargs = dict(keywords=query, region="kr-kr", max_results=limit + 5)
-        if timelimit:
-            kwargs["timelimit"] = timelimit
         with DDGS() as ddgs:
-            results = list(ddgs.videos(**kwargs))
+            results = list(ddgs.videos(query, region="kr-kr", max_results=limit + 5))
         items = []
         for r in results:
             url = r.get("content", "")
