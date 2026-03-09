@@ -444,6 +444,11 @@ def render_expert_page(
     else:
         st.info("상단 버튼을 눌러 데이터를 수집하고 인사이트를 확인하세요.")
 
+    # ── 인기 관련 YouTube 영상 (항상 표시) ────────────────────────────────
+    st.markdown("---")
+    st.markdown(f"## 🎬 {title} 관련 인기 YouTube 영상")
+    render_youtube_section(f"{title} {default_query.split()[0]} 분석 동향")
+
     # ── 외부 참고 링크 ────────────────────────────────────────────────────
     if external_links:
         st.markdown("---")
