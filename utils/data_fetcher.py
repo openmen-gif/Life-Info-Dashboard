@@ -136,7 +136,82 @@ MOCK_COORD_MAP = {
     "Texas": (31.9686, -99.9018)
 }
 
+WMO_WEATHER_CODES = {
+    0: ("맑음", "01d"), 1: ("대체로 맑음", "02d"), 2: ("구름 조금", "03d"), 3: ("흐림", "04d"),
+    45: ("안개", "50d"), 48: ("짙은 안개", "50d"),
+    51: ("이슬비", "09d"), 53: ("이슬비", "09d"), 55: ("강한 이슬비", "09d"),
+    61: ("약한 비", "10d"), 63: ("비", "10d"), 65: ("강한 비", "10d"),
+    71: ("약한 눈", "13d"), 73: ("눈", "13d"), 75: ("강한 눈", "13d"),
+    77: ("싸락눈", "13d"), 80: ("소나기", "09d"), 81: ("소나기", "09d"), 82: ("강한 소나기", "09d"),
+    85: ("눈보라", "13d"), 86: ("강한 눈보라", "13d"),
+    95: ("뇌우", "11d"), 96: ("우박 뇌우", "11d"), 99: ("강한 우박 뇌우", "11d"),
+}
+
+# Geocoding for common cities (lat, lon)
+CITY_COORDS = {
+    "Seoul": (37.5665, 126.9780), "Busan": (35.1796, 129.0756),
+    "Daegu": (35.8714, 128.6014), "Incheon": (37.4563, 126.7052),
+    "Gwangju": (35.1595, 126.8526), "Daejeon": (36.3504, 127.3845),
+    "Ulsan": (35.5384, 129.3114), "Sejong": (36.4800, 126.9252),
+    "Jeju": (33.4996, 126.5312),
+    "New York": (40.7128, -74.0060), "Chicago": (41.8781, -87.6298),
+    "London": (51.5074, -0.1278), "Tokyo": (35.6762, 139.6503),
+    "Osaka": (34.6937, 135.5023), "Paris": (48.8566, 2.3522),
+    "Beijing": (39.9042, 116.4074), "Shanghai": (31.2304, 121.4737),
+    "Singapore": (1.3521, 103.8198), "Sydney": (-33.8688, 151.2093),
+    "Dubai": (25.2048, 55.2708), "Bangkok": (13.7563, 100.5018),
+    "Ho Chi Minh": (10.8231, 106.6297), "Hanoi": (21.0285, 105.8542),
+}
+
+
+def _fetch_weather_open_meteo(city: str) -> Optional[dict]:
+    """Fetch real-time weather from Open-Meteo (free, no API key)."""
+    eng_city = KOR_CITY_MAP.get(city.strip(), city.strip())
+    coords = CITY_COORDS.get(eng_city)
+    if not coords:
+        # Try geocoding API
+        try:
+            geo_url = f"https://geocoding-api.open-meteo.com/v1/search?name={eng_city}&count=1&language=en"
+            gr = requests.get(geo_url, timeout=5)
+            gr.raise_for_status()
+            results = gr.json().get("results", [])
+            if results:
+                coords = (results[0]["latitude"], results[0]["longitude"])
+        except Exception:
+            coords = (37.5665, 126.9780)  # Default Seoul
+
+    lat, lon = coords
+    url = (
+        f"https://api.open-meteo.com/v1/forecast?"
+        f"latitude={lat}&longitude={lon}"
+        f"&current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m"
+        f"&timezone=auto"
+    )
+    try:
+        r = requests.get(url, timeout=8)
+        r.raise_for_status()
+        d = r.json()
+        current = d.get("current", {})
+        wmo_code = current.get("weather_code", 0)
+        desc, icon = WMO_WEATHER_CODES.get(wmo_code, ("알 수 없음", "01d"))
+        return {
+            "city": city,
+            "lat": lat,
+            "lon": lon,
+            "temp": current.get("temperature_2m", 0),
+            "feels_like": current.get("apparent_temperature", 0),
+            "humidity": current.get("relative_humidity_2m", 0),
+            "desc": desc,
+            "icon": icon,
+            "wind_speed": current.get("wind_speed_10m", 0),
+            "updated": datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
+        }
+    except Exception:
+        return None
+
+
 def _fetch_weather_local(city: str, api_key: Optional[str]) -> dict:
+    # 1. Try OpenWeatherMap if API key provided
     if api_key:
         url = f"https://api.openweathermap.org/data/2.5/weather?q={city}&appid={api_key}&units=metric&lang=kr"
         try:
@@ -157,14 +232,19 @@ def _fetch_weather_local(city: str, api_key: Optional[str]) -> dict:
             }
         except Exception:
             pass
-            
-    # Mock data fallback behavior
+
+    # 2. Try Open-Meteo (free, no key)
+    result = _fetch_weather_open_meteo(city)
+    if result:
+        return result
+
+    # 3. Final fallback — mock data
     eng_city = KOR_CITY_MAP.get(city.strip(), city.strip())
-    mock_lat, mock_lon = MOCK_COORD_MAP.get(eng_city, (37.5665, 126.9780))
-    
+    mock_lat, mock_lon = CITY_COORDS.get(eng_city, (37.5665, 126.9780))
+
     return {
-        "city": city, "lat": mock_lat, "lon": mock_lon, "temp": 12.5, "feels_like": 10.2, "humidity": 55,
-        "desc": "맑음", "icon": "01d", "wind_speed": 3.2,
+        "city": city, "lat": mock_lat, "lon": mock_lon, "temp": 0, "feels_like": 0, "humidity": 0,
+        "desc": "데이터 없음", "icon": "01d", "wind_speed": 0,
         "updated": datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
         "_sample": True,
     }
@@ -203,7 +283,7 @@ def _fetch_traffic_local() -> list[dict]:
 
 # ── API Calls (Backend) and Public Functions ───────────────────────────────
 
-@st.cache_data(ttl=600, show_spinner=False)
+@st.cache_data(ttl=300, show_spinner=False)
 def fetch_weather(city: str = "Seoul", api_key: Optional[str] = None) -> dict:
     """Fetch weather data from API or fallback to local execution."""
     eng_city = KOR_CITY_MAP.get(city.strip(), city.strip())
@@ -299,6 +379,22 @@ def fetch_web_search(query: str, limit: int = 10) -> list[dict]:
     results = _filter_by_domain(results, domain, title_key="title")
     results = _deduplicate_news(results, title_key="title")
     return results
+
+@st.cache_data(ttl=300, show_spinner=False)
+def fetch_exchange_rates() -> dict:
+    """Fetch real-time exchange rates from open.er-api.com (free, no key)."""
+    try:
+        r = requests.get("https://open.er-api.com/v6/latest/USD", timeout=8)
+        r.raise_for_status()
+        data = r.json()
+        return {
+            "rates": data.get("rates", {}),
+            "updated": data.get("time_last_update_utc", ""),
+            "ok": True,
+        }
+    except Exception as e:
+        return {"rates": {}, "updated": str(e), "ok": False}
+
 
 def fetch_news_search(query: str, limit: int = 10) -> list[dict]:
     """Fetch news search results. API mode uses backend, standalone uses RSS."""
