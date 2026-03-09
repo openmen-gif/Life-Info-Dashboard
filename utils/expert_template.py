@@ -1,8 +1,96 @@
 import streamlit as st
 import datetime
+import re
+from collections import Counter
 import pandas as pd
 from utils.data_fetcher import fetch_web_search, fetch_news_search
 from utils.report_downloader import render_download_buttons
+
+# ── 감성 분석 키워드 사전 ─────────────────────────────────────────────────
+_POSITIVE_WORDS = {
+    "상승", "급등", "호재", "성장", "개선", "회복", "활황", "강세", "최고",
+    "돌파", "증가", "확대", "호조", "긍정", "수혜", "기대", "추천", "인기",
+    "혁신", "돌파구", "신기록", "랠리", "반등", "호황", "흑자", "대박",
+}
+_NEGATIVE_WORDS = {
+    "하락", "급락", "악재", "위축", "감소", "둔화", "약세", "최저",
+    "폭락", "축소", "부진", "우려", "경고", "위기", "리스크", "적자",
+    "침체", "하방", "손실", "붕괴", "악화", "불안", "충격", "규제",
+}
+
+
+def _analyze_news_trends(news_list: list[dict]) -> dict:
+    """뉴스 제목에서 키워드 빈도 + 감성 경향 분석."""
+    if not news_list:
+        return {}
+
+    all_titles = " ".join(n.get("title", "") for n in news_list)
+    # 한글 키워드 추출 (2글자 이상)
+    words = re.findall(r"[가-힣]{2,}", all_titles)
+    # 불용어 제거
+    stopwords = {"것으로", "에서", "관련", "대한", "위한", "으로", "이번", "오늘", "내일",
+                 "지난", "올해", "이후", "까지", "부터", "하는", "있는", "없는", "되는"}
+    words = [w for w in words if w not in stopwords]
+    word_freq = Counter(words).most_common(10)
+
+    # 감성 분석
+    pos_count = sum(1 for w in words if w in _POSITIVE_WORDS)
+    neg_count = sum(1 for w in words if w in _NEGATIVE_WORDS)
+    total_sentiment = pos_count + neg_count
+
+    if total_sentiment == 0:
+        sentiment = "중립"
+        sentiment_score = 50
+    else:
+        sentiment_score = int(pos_count / total_sentiment * 100)
+        if sentiment_score >= 60:
+            sentiment = "긍정적"
+        elif sentiment_score <= 40:
+            sentiment = "부정적"
+        else:
+            sentiment = "혼조"
+
+    # 출처 분포
+    sources = [n.get("source", "기타") for n in news_list if n.get("source")]
+    source_freq = Counter(sources).most_common(5)
+
+    return {
+        "word_freq": word_freq,
+        "sentiment": sentiment,
+        "sentiment_score": sentiment_score,
+        "pos_count": pos_count,
+        "neg_count": neg_count,
+        "source_freq": source_freq,
+        "total_articles": len(news_list),
+    }
+
+
+def _render_news_trends(news_list: list[dict], title: str):
+    """뉴스 경향 분석 결과를 Streamlit 위젯으로 표시."""
+    analysis = _analyze_news_trends(news_list)
+    if not analysis:
+        return
+
+    st.markdown(f"#### 📊 {title} 뉴스 경향 분석")
+
+    # 감성 + 기사 수
+    c1, c2, c3 = st.columns(3)
+    c1.metric("분석 기사 수", f"{analysis['total_articles']}건")
+
+    sentiment_icon = {"긍정적": "🟢", "부정적": "🔴", "혼조": "🟡", "중립": "⚪"}
+    c2.metric("전체 감성", f"{sentiment_icon.get(analysis['sentiment'], '⚪')} {analysis['sentiment']}")
+    c3.metric("긍정/부정 비율", f"{analysis['pos_count']}:{analysis['neg_count']}")
+
+    # 키워드 빈도 차트
+    if analysis["word_freq"]:
+        kw_df = pd.DataFrame(analysis["word_freq"], columns=["키워드", "빈도"])
+        st.markdown("**핵심 키워드 빈도**")
+        st.bar_chart(kw_df.set_index("키워드"))
+
+    # 출처 분포
+    if analysis["source_freq"]:
+        src_text = " · ".join(f"{s}({c}건)" for s, c in analysis["source_freq"])
+        st.caption(f"📰 주요 출처: {src_text}")
 
 
 def render_expert_page(
@@ -12,6 +100,7 @@ def render_expert_page(
     tickers: dict | None = None,
     external_links: list | None = None,
     auto_news_query: str | None = None,
+    sub_topics: list | None = None,
 ):
     """
     Render a standard expert page with search, statistics, reporting,
@@ -21,6 +110,7 @@ def render_expert_page(
         tickers: {symbol: display_name} for yfinance real-time metrics
         external_links: [(label, url), ...] for reference links
         auto_news_query: auto-load news on page open (no button needed)
+        sub_topics: [(tab_icon, tab_name, search_query), ...] for categorized news tabs
     """
     st.title(f"{icon} {title} 전문가")
     st.markdown("---")
@@ -56,17 +146,40 @@ def render_expert_page(
                 sc3.metric("평균", f"{sum(prices)/len(prices):,.2f}")
         st.markdown("---")
 
-    # ── 자동 뉴스 로딩 ────────────────────────────────────────────────────
+    # ── 카테고리별 뉴스 탭 (sub_topics) ──────────────────────────────────
+    if sub_topics:
+        st.markdown(f"### 📂 {title} 카테고리별 최신 동향")
+        tab_labels = [f"{t[0]} {t[1]}" for t in sub_topics]
+        tabs = st.tabs(tab_labels)
+        for tab, (tab_icon, tab_name, tab_query) in zip(tabs, sub_topics):
+            with tab:
+                news = fetch_news_search(tab_query, limit=5)
+                if news:
+                    for n in news[:4]:
+                        st.markdown(
+                            f"- **[{n['title']}]({n['link']})**  \n"
+                            f"  <small>{n.get('source', '')} | {n.get('published', '')}</small>",
+                            unsafe_allow_html=True,
+                        )
+                    # 카테고리별 경향 분석
+                    _render_news_trends(news, tab_name)
+                else:
+                    st.info(f"{tab_name} 관련 뉴스를 가져오지 못했습니다.")
+        st.markdown("---")
+
+    # ── 자동 뉴스 로딩 + 경향 분석 ──────────────────────────────────────
     if auto_news_query:
         st.markdown(f"### 📰 {title} 최신 뉴스")
-        auto_news = fetch_news_search(auto_news_query, limit=5)
+        auto_news = fetch_news_search(auto_news_query, limit=8)
         if auto_news:
-            for n in auto_news[:4]:
+            for n in auto_news[:5]:
                 st.markdown(
                     f"- **[{n['title']}]({n['link']})**  \n"
                     f"  <small>{n.get('source', '')} | {n.get('published', '')}</small>",
                     unsafe_allow_html=True,
                 )
+            # 뉴스 경향 분석
+            _render_news_trends(auto_news, title)
         else:
             st.info(f"{title} 관련 뉴스를 가져오지 못했습니다.")
         st.markdown("---")
@@ -80,18 +193,15 @@ def render_expert_page(
     with col1:
         analyze_btn = st.button("데이터 분석 및 리포트 갱신", type="primary", use_container_width=True)
 
-    # Session state key unique to this page
     state_key = f"expert_data_{title}"
 
     if analyze_btn:
         with st.spinner("최신 트렌드 및 뉴스 수집 중..."):
             web_results = fetch_web_search(query, limit=5)
-            news_results = fetch_news_search(query, limit=5)
+            news_results = fetch_news_search(query, limit=8)
 
-            # Generate context-aware statistical data
             dates = pd.date_range(end=datetime.datetime.today(), periods=7).strftime('%m-%d').tolist()
 
-            # Try to use real ticker data if available
             if tickers:
                 from utils.data_fetcher import fetch_stock_data as _fsd
                 first_sym = list(tickers.keys())[0]
@@ -135,12 +245,14 @@ def render_expert_page(
 
         st.markdown("### 📰 핵심 관련 뉴스")
         if data["news"]:
-            for n in data["news"][:3]:
+            for n in data["news"][:5]:
                 st.markdown(
                     f"- **[{n['title']}]({n['link']})**  \n"
                     f"  <small>{n.get('source', '')} | {n.get('published', '')}</small>",
                     unsafe_allow_html=True,
                 )
+            # 검색 결과 경향 분석
+            _render_news_trends(data["news"], data["query"])
         else:
             st.info("관련 뉴스를 찾지 못했습니다.")
 
@@ -158,7 +270,6 @@ def render_expert_page(
 
         st.markdown("---")
 
-        # Prepare context for report generation
         trend_records = []
         if isinstance(data.get("df"), pd.DataFrame) and not data["df"].empty:
             trend_records = data["df"].to_dict('records')
