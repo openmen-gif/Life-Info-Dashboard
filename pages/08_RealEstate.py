@@ -9,6 +9,7 @@ render_expert_page(
     title="부동산",
     icon="🏠",
     default_query="국내 아파트 청약 전세 매매 부동산 동향",
+    youtube_sort="latest",
     tickers={
         "VNQ": "미국REITs",
         "IYR": "부동산ETF",

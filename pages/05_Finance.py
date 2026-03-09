@@ -9,6 +9,7 @@ render_expert_page(
     title="생활금융",
     icon="💰",
     default_query="재테크 저축 금리 생활금융 동향",
+    youtube_sort="latest",
     tickers={
         "GC=F": "금(Gold)",
         "^TNX": "미국10년국채",

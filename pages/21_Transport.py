@@ -9,6 +9,7 @@ render_expert_page(
     title="운송/물류",
     icon="🚚",
     default_query="국내외 물류 해운 항공 운송 트렌드",
+    youtube_sort="latest",
     tickers={
         "UPS": "UPS(물류)",
         "FDX": "페덱스",

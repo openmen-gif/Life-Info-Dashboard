@@ -9,6 +9,7 @@ render_expert_page(
     title="사업/창업",
     icon="🏢",
     default_query="스타트업 창업 지원 비즈니스 매크로 동향",
+    youtube_sort="latest",
     tickers={
         "IPO": "IPO ETF",
         "ARKK": "ARK혁신ETF",

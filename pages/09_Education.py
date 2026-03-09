@@ -9,6 +9,7 @@ render_expert_page(
     title="교육",
     icon="📚",
     default_query="글로벌 에듀테크 국내 입시 교육 트렌드",
+    youtube_sort="latest",
     auto_news_query="교육 입시 에듀테크 수능 대학",
     external_links=[
         ("📚 교육부", "https://www.moe.go.kr/"),

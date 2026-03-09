@@ -6,7 +6,7 @@ import streamlit.components.v1 as components
 
 apply_custom_css()
 
-render_expert_page(title="해외 분쟁/전쟁", icon="🌍", default_query="우크라이나 중동 글로벌 분쟁 전쟁 동향")
+render_expert_page(title="해외 분쟁/전쟁", icon="🌍", default_query="우크라이나 중동 글로벌 분쟁 전쟁 동향", youtube_sort="latest")
 
 st.markdown("---")
 st.markdown("### 🗺️ 글로벌 분쟁 실시간 모니터링 맵 (ArcGIS)")
