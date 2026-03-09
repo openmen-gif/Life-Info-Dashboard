@@ -767,14 +767,14 @@ def _add_toc_entry(doc, num, title_text, bookmark_name):
 # Individual Expert Word Report
 # ═══════════════════════════════════════════════════════════════════════════════
 
-def _gen_word(query, news, web, trend, now_str) -> bytes:
+def _gen_word(query, news, web, trend, now_str, table_data=None) -> bytes:
     try:
         from docx import Document
         from docx.shared import Inches, Pt, RGBColor
         from docx.enum.text import WD_ALIGN_PARAGRAPH
         from docx.enum.table import WD_TABLE_ALIGNMENT
     except ImportError:
-        return _gen_text(query, news, web, trend, now_str)
+        return _gen_text(query, news, web, trend, now_str, table_data=table_data)
 
     domain = _match_expert_domain(query)
     doc = Document()
@@ -819,6 +819,9 @@ def _gen_word(query, news, web, trend, now_str) -> bytes:
         sections.append((sec_num, "트렌드 분석 및 통계", "sec_trend"))
         sec_num += 1
         sections.append((sec_num, "변화율 분석 및 이상치 탐지", "sec_change_rate"))
+        sec_num += 1
+    if table_data:
+        sections.append((sec_num, "데이터 현황 및 통계 분석", "sec_table_data"))
         sec_num += 1
     if news:
         sections.append((sec_num, "뉴스 심층 분석 (감성·키워드·출처)", "sec_news_analysis"))
@@ -872,6 +875,25 @@ def _gen_word(query, news, web, trend, now_str) -> bytes:
             f"{abs(stats['pct_change']):.1f}% {stats['trend_dir']}하였으며, "
             f"변동성은 {stats['volatility']} 수준(CV={stats['cv']:.1f}%)입니다."
         )
+
+    # Table data summary for non-trend pages (oil/exchange/stock)
+    if table_data:
+        summary_parts.append(
+            f"총 {len(table_data)}건의 실시간 데이터를 수집하여 현황을 분석하였습니다."
+        )
+        # Extract numeric values for quick overview
+        _numeric_cols = {}
+        for row in table_data:
+            for k, v in row.items():
+                if isinstance(v, (int, float)):
+                    _numeric_cols.setdefault(k, []).append(v)
+        if _numeric_cols:
+            highlights = []
+            for col_name, vals in list(_numeric_cols.items())[:3]:
+                avg_v = sum(vals) / len(vals)
+                highlights.append(f"{col_name} 평균 {avg_v:,.2f}")
+            if highlights:
+                summary_parts.append(f"주요 수치: {' | '.join(highlights)}")
 
     # Brief news summary (detailed flow analysis in dedicated section)
     if news:
@@ -1041,6 +1063,121 @@ def _gen_word(query, news, web, trend, now_str) -> bytes:
                     doc.add_paragraph(f"  ⚠ {date_label}: {oc:+.2f}% (기준 초과)")
             else:
                 doc.add_paragraph("분석 기간 내 이상치는 탐지되지 않았습니다. 안정적 변동 패턴입니다.")
+
+    # ══ Table Data Section (for non-trend pages: oil/exchange/stock) ══
+    if table_data:
+        doc.add_paragraph("")
+        h = doc.add_heading(f"{current_sec}. 데이터 현황 및 통계 분석", level=2)
+        _add_bookmark(h, "sec_table_data")
+        current_sec += 1
+
+        doc.add_paragraph(
+            f"'{query}' 관련 실시간 수집 데이터 {len(table_data)}건의 현황입니다."
+        )
+
+        # Render data as Word table
+        if table_data:
+            all_keys = []
+            for row in table_data:
+                for k in row.keys():
+                    if k not in all_keys:
+                        all_keys.append(k)
+
+            tbl = doc.add_table(rows=1 + len(table_data), cols=len(all_keys),
+                                style="Light Shading Accent 1")
+            tbl.alignment = WD_TABLE_ALIGNMENT.CENTER
+            # Header
+            for ci, key in enumerate(all_keys):
+                cell = tbl.rows[0].cells[ci]
+                cell.text = str(key)
+                for run in cell.paragraphs[0].runs:
+                    run.bold = True
+            # Data rows
+            for ri, row in enumerate(table_data):
+                for ci, key in enumerate(all_keys):
+                    val = row.get(key, "")
+                    tbl.rows[ri + 1].cells[ci].text = str(val)
+
+        # Numeric column statistics
+        numeric_cols = {}
+        for row in table_data:
+            for k, v in row.items():
+                if isinstance(v, (int, float)):
+                    numeric_cols.setdefault(k, []).append(v)
+
+        if numeric_cols:
+            doc.add_paragraph("")
+            p = doc.add_paragraph()
+            run = p.add_run("▶ 수치 데이터 통계 분석")
+            run.bold = True
+            run.font.size = Pt(11)
+
+            for col_name, vals in numeric_cols.items():
+                if len(vals) < 2:
+                    continue
+                col_stats = _calc_statistics(vals)
+                doc.add_paragraph("")
+                p = doc.add_paragraph()
+                run = p.add_run(f"📊 {col_name}")
+                run.bold = True
+
+                stat_tbl = doc.add_table(rows=6, cols=2, style="Light Shading Accent 1")
+                stat_tbl.alignment = WD_TABLE_ALIGNMENT.CENTER
+                stat_items = [
+                    ("항목 수", f"{len(vals)}"),
+                    ("평균", f"{col_stats['mean']:,.2f}"),
+                    ("표준편차", f"{col_stats['std_dev']:,.2f}"),
+                    ("최댓값", f"{col_stats['max']:,.2f}"),
+                    ("최솟값", f"{col_stats['min']:,.2f}"),
+                    ("변동계수 (CV)", f"{col_stats['cv']:.1f}%"),
+                ]
+                for row_idx, (label, val) in enumerate(stat_items):
+                    stat_tbl.rows[row_idx].cells[0].text = label
+                    stat_tbl.rows[row_idx].cells[1].text = val
+
+            # Generate bar chart for first numeric column with labels
+            try:
+                _setup_korean_font()
+                import matplotlib.pyplot as plt
+
+                # Find a label column (first non-numeric column)
+                label_key = None
+                for k in all_keys:
+                    sample_vals = [row.get(k) for row in table_data if row.get(k)]
+                    if sample_vals and not isinstance(sample_vals[0], (int, float)):
+                        label_key = k
+                        break
+
+                # Chart the first numeric column
+                first_num_col = list(numeric_cols.keys())[0]
+                labels = [str(row.get(label_key, i)) for i, row in enumerate(table_data)] if label_key else [str(i + 1) for i in range(len(table_data))]
+                chart_vals = [row.get(first_num_col, 0) for row in table_data]
+                # Filter to only rows that have numeric value for this column
+                paired = [(l, v) for l, v in zip(labels, chart_vals) if isinstance(v, (int, float))]
+                if paired:
+                    labels, chart_vals = zip(*paired)
+                    fig, ax = plt.subplots(figsize=(10, max(4, len(paired) * 0.5)))
+                    colors = ['#1A237E' if v >= 0 else '#C62828' for v in chart_vals]
+                    bars = ax.barh(range(len(labels)), chart_vals, color=colors, edgecolor='white', height=0.6)
+                    ax.set_yticks(range(len(labels)))
+                    ax.set_yticklabels(labels, fontsize=9)
+                    ax.set_xlabel(first_num_col, fontsize=10)
+                    ax.set_title(f"'{query}' — {first_num_col} 비교", fontsize=12, fontweight="bold")
+                    ax.invert_yaxis()
+                    for bar, val in zip(bars, chart_vals):
+                        ax.text(bar.get_width(), bar.get_y() + bar.get_height() / 2,
+                                f" {val:,.2f}", va='center', fontsize=8)
+                    plt.tight_layout()
+                    chart_buf = io.BytesIO()
+                    fig.savefig(chart_buf, format="png", dpi=150, bbox_inches="tight")
+                    plt.close(fig)
+                    chart_buf.seek(0)
+                    doc.add_paragraph("")
+                    doc.add_picture(chart_buf, width=Inches(5.8))
+                    last_p = doc.paragraphs[-1]
+                    last_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            except Exception:
+                pass
 
     # ══ News Deep Analysis (Sentiment + Keywords + Sources) ══
     if news:
@@ -1735,7 +1872,7 @@ def _gen_word_master(context_list, now_str) -> bytes:
 # Plain text generators
 # ═══════════════════════════════════════════════════════════════════════════════
 
-def _gen_text(query, news, web, trend, now_str) -> bytes:
+def _gen_text(query, news, web, trend, now_str, table_data=None) -> bytes:
     lines = [f"생활정보 분석 리포트 — {query}", f"생성일시: {now_str}", "=" * 60, ""]
 
     if trend:
@@ -1746,6 +1883,23 @@ def _gen_text(query, news, web, trend, now_str) -> bytes:
             lines.append(f"  {row.get('Date', '')}  →  {row.get('Trend', '')}")
         if stats:
             lines.append(f"\n  평균: {stats['mean']:,.1f}  |  변동률: {stats['pct_change']:+.1f}%  |  추세: {stats['trend_dir']}")
+        lines.append("")
+
+    if table_data:
+        lines.append("[ 데이터 현황 ]")
+        for row in table_data:
+            parts = [f"{k}: {v}" for k, v in row.items()]
+            lines.append(f"  {' | '.join(parts)}")
+        # Numeric stats
+        numeric_cols = {}
+        for row in table_data:
+            for k, v in row.items():
+                if isinstance(v, (int, float)):
+                    numeric_cols.setdefault(k, []).append(v)
+        for col_name, vals in numeric_cols.items():
+            if len(vals) >= 2:
+                col_stats = _calc_statistics(vals)
+                lines.append(f"\n  [{col_name}] 평균: {col_stats['mean']:,.2f}  |  최대: {col_stats['max']:,.2f}  |  최소: {col_stats['min']:,.2f}  |  CV: {col_stats['cv']:.1f}%")
         lines.append("")
 
     if news:
@@ -1801,7 +1955,7 @@ def _gen_text_master(context_list, now_str) -> bytes:
 # Excel generators
 # ═══════════════════════════════════════════════════════════════════════════════
 
-def _gen_excel(query, news, web, trend, now_str) -> bytes:
+def _gen_excel(query, news, web, trend, now_str, table_data=None) -> bytes:
     try:
         import xlsxwriter
         buf = io.BytesIO()
@@ -1809,28 +1963,77 @@ def _gen_excel(query, news, web, trend, now_str) -> bytes:
         bold = wb.add_format({"bold": True})
         header_fmt = wb.add_format({"bold": True, "bg_color": "#1A237E", "font_color": "white"})
 
-        # Trend sheet
-        ws1 = wb.add_worksheet("트렌드")
-        ws1.write(0, 0, f"분석 키워드: {query}", bold)
-        ws1.write(1, 0, f"생성일시: {now_str}")
-        ws1.write(3, 0, "날짜", header_fmt)
-        ws1.write(3, 1, "트렌드", header_fmt)
-        for i, row in enumerate(trend or []):
-            ws1.write(4 + i, 0, str(row.get("Date", "")))
-            ws1.write(4 + i, 1, row.get("Trend", 0))
+        if trend:
+            # Trend sheet
+            ws1 = wb.add_worksheet("트렌드")
+            ws1.write(0, 0, f"분석 키워드: {query}", bold)
+            ws1.write(1, 0, f"생성일시: {now_str}")
+            ws1.write(3, 0, "날짜", header_fmt)
+            ws1.write(3, 1, "트렌드", header_fmt)
+            for i, row in enumerate(trend or []):
+                ws1.write(4 + i, 0, str(row.get("Date", "")))
+                ws1.write(4 + i, 1, row.get("Trend", 0))
 
-        # Statistics
-        if trend and len(trend) >= 2:
-            values = [r.get("Trend", 0) for r in trend]
-            stats = _calc_statistics(values)
-            r = 4 + len(trend) + 1
-            ws1.write(r, 0, "통계", bold)
-            stat_items = [("평균", stats['mean']), ("표준편차", stats['std_dev']),
-                          ("최고", stats['max']), ("최저", stats['min']),
-                          ("변동률(%)", stats['pct_change'])]
-            for j, (label, val) in enumerate(stat_items):
-                ws1.write(r + 1 + j, 0, label)
-                ws1.write(r + 1 + j, 1, round(val, 2))
+            # Statistics
+            if len(trend) >= 2:
+                values = [r.get("Trend", 0) for r in trend]
+                stats = _calc_statistics(values)
+                r = 4 + len(trend) + 1
+                ws1.write(r, 0, "통계", bold)
+                stat_items = [("평균", stats['mean']), ("표준편차", stats['std_dev']),
+                              ("최고", stats['max']), ("최저", stats['min']),
+                              ("변동률(%)", stats['pct_change'])]
+                for j, (label, val) in enumerate(stat_items):
+                    ws1.write(r + 1 + j, 0, label)
+                    ws1.write(r + 1 + j, 1, round(val, 2))
+
+        if table_data:
+            # Table data sheet
+            ws_data = wb.add_worksheet("데이터 현황")
+            ws_data.write(0, 0, f"분석 키워드: {query}", bold)
+            ws_data.write(1, 0, f"생성일시: {now_str}")
+            all_keys = []
+            for row in table_data:
+                for k in row.keys():
+                    if k not in all_keys:
+                        all_keys.append(k)
+            for ci, key in enumerate(all_keys):
+                ws_data.write(3, ci, key, header_fmt)
+                ws_data.set_column(ci, ci, max(15, len(str(key)) * 2))
+            for ri, row in enumerate(table_data):
+                for ci, key in enumerate(all_keys):
+                    val = row.get(key, "")
+                    if isinstance(val, (int, float)):
+                        ws_data.write(4 + ri, ci, val)
+                    else:
+                        ws_data.write(4 + ri, ci, str(val))
+
+            # Statistics section below data
+            numeric_cols = {}
+            for row in table_data:
+                for k, v in row.items():
+                    if isinstance(v, (int, float)):
+                        numeric_cols.setdefault(k, []).append(v)
+            if numeric_cols:
+                stat_row = 4 + len(table_data) + 2
+                ws_data.write(stat_row, 0, "통계 분석", bold)
+                stat_row += 1
+                ws_data.write(stat_row, 0, "항목", header_fmt)
+                ws_data.write(stat_row, 1, "평균", header_fmt)
+                ws_data.write(stat_row, 2, "표준편차", header_fmt)
+                ws_data.write(stat_row, 3, "최대", header_fmt)
+                ws_data.write(stat_row, 4, "최소", header_fmt)
+                ws_data.write(stat_row, 5, "CV(%)", header_fmt)
+                for ci, (col_name, vals) in enumerate(numeric_cols.items()):
+                    if len(vals) >= 2:
+                        cs = _calc_statistics(vals)
+                        r = stat_row + 1 + ci
+                        ws_data.write(r, 0, col_name)
+                        ws_data.write(r, 1, round(cs['mean'], 2))
+                        ws_data.write(r, 2, round(cs['std_dev'], 2))
+                        ws_data.write(r, 3, round(cs['max'], 2))
+                        ws_data.write(r, 4, round(cs['min'], 2))
+                        ws_data.write(r, 5, round(cs['cv'], 1))
 
         # News sheet
         ws2 = wb.add_worksheet("뉴스")
@@ -1855,11 +2058,26 @@ def _gen_excel(query, news, web, trend, now_str) -> bytes:
         from openpyxl import Workbook
         wb = Workbook()
         ws = wb.active
-        ws.title = "트렌드"
-        ws.append([f"분석 키워드: {query}", f"생성일시: {now_str}"])
-        ws.append(["날짜", "트렌드"])
-        for row in (trend or []):
-            ws.append([str(row.get("Date", "")), row.get("Trend", 0)])
+        if trend:
+            ws.title = "트렌드"
+            ws.append([f"분석 키워드: {query}", f"생성일시: {now_str}"])
+            ws.append(["날짜", "트렌드"])
+            for row in trend:
+                ws.append([str(row.get("Date", "")), row.get("Trend", 0)])
+        elif table_data:
+            ws.title = "데이터 현황"
+            ws.append([f"분석 키워드: {query}", f"생성일시: {now_str}"])
+            all_keys = []
+            for row in table_data:
+                for k in row.keys():
+                    if k not in all_keys:
+                        all_keys.append(k)
+            ws.append(all_keys)
+            for row in table_data:
+                ws.append([row.get(k, "") for k in all_keys])
+        else:
+            ws.title = "리포트"
+            ws.append([f"분석 키워드: {query}", f"생성일시: {now_str}"])
         buf = io.BytesIO()
         wb.save(buf)
         return buf.getvalue()
@@ -1958,19 +2176,27 @@ def _generate_local_report(report_format: str, context=None) -> bytes:
         query = context.get("query", "생활정보")
         news = context.get("news", [])
         web = context.get("web", [])
-        trend = context.get("df", [])
+        raw_df = context.get("df", [])
+        # Detect if df is trend data (has Trend key) or tabular snapshot data
+        if raw_df and isinstance(raw_df[0], dict) and "Trend" in raw_df[0]:
+            trend = raw_df
+            table_data = []
+        else:
+            trend = []
+            table_data = raw_df
     else:
         query = "생활정보"
         news = []
         web = []
         trend = []
+        table_data = []
 
     if report_format == "excel":
-        return _gen_excel(query, news, web, trend, now_str)
+        return _gen_excel(query, news, web, trend, now_str, table_data=table_data)
     elif report_format == "word":
-        return _gen_word(query, news, web, trend, now_str)
+        return _gen_word(query, news, web, trend, now_str, table_data=table_data)
     else:
-        return _gen_text(query, news, web, trend, now_str)
+        return _gen_text(query, news, web, trend, now_str, table_data=table_data)
 
 
 def download_report_from_api(report_format: str, context: dict = None):
