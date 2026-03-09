@@ -18,7 +18,7 @@ ENV STREAMLIT_SERVER_PORT=7860
 ENV STREAMLIT_SERVER_ADDRESS=0.0.0.0
 ENV STREAMLIT_SERVER_HEADLESS=true
 ENV LIFE_MODE=standalone
-# Build trigger: 2026-03-09T02:00 (add stock monitor page)
+# Build trigger: 2026-03-09T03:00 (oil realtime prices)
 
 CMD ["streamlit", "run", "Dashboard.py", \
      "--server.port=7860", \

@@ -2,19 +2,17 @@
 """
 유가 & 환율 실시간 모니터링 페이지
 - 환율: open.er-api.com (무료, API 키 불필요)
-- 유가: EIA / DuckDuckGo 뉴스 기반 컨텍스트
+- 유가: yfinance 선물 시세 (CL=F, BZ=F 등)
 """
 import streamlit as st
-import requests
 import datetime
 import pandas as pd
 from utils.css_loader import apply_custom_css
-from utils.data_fetcher import fetch_news_search
+from utils.data_fetcher import fetch_exchange_rates, fetch_stock_data, fetch_news_search
 
 apply_custom_css()
 
 # ── 상수 ──────────────────────────────────────────────────────────────────
-FOREX_API = "https://open.er-api.com/v6/latest/USD"
 TARGET_CURRENCIES = {
     "KRW": "한국 원 (KRW)",
     "EUR": "유럽 유로 (EUR)",
@@ -25,29 +23,12 @@ TARGET_CURRENCIES = {
     "HKD": "홍콩 달러 (HKD)",
     "AUD": "호주 달러 (AUD)",
 }
-OIL_TICKERS = {
-    "WTI (서부텍사스원유)": "WTI crude oil",
-    "Brent (브렌트유)": "Brent crude oil price",
-    "두바이유 (Dubai)": "Dubai crude oil price",
+OIL_FUTURES = {
+    "CL=F": ("WTI 원유", "🛢️"),
+    "BZ=F": ("브렌트유", "🛢️"),
+    "HO=F": ("난방유", "🔥"),
+    "NG=F": ("천연가스", "💨"),
 }
-
-# ── 캐시 함수 ────────────────────────────────────────────────────────────
-@st.cache_data(ttl=300, show_spinner=False)  # 5분 캐시
-def _fetch_forex():
-    """USD 기준 환율 데이터 조회 (open.er-api.com – 무료, 키 없음)."""
-    try:
-        r = requests.get(FOREX_API, timeout=8)
-        r.raise_for_status()
-        data = r.json()
-        return data.get("rates", {}), data.get("time_last_update_utc", "")
-    except Exception as e:
-        return {}, str(e)
-
-
-@st.cache_data(ttl=600, show_spinner=False)
-def _fetch_oil_news(query: str):
-    return fetch_news_search(query, limit=4)
-
 
 # ── 페이지 헤더 ───────────────────────────────────────────────────────────
 st.title("⛽ 유가 & 환율 실시간 모니터링")
@@ -57,29 +38,25 @@ if st.button("🔄 데이터 갱신", type="primary"):
     st.cache_data.clear()
     st.rerun()
 
-st.caption(f"마지막 갱신: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')} (5분 자동 갱신)")
+st.caption(f"마지막 갱신: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')} (5분 자동 캐시)")
 
 # ═════════════════════════════════════════════════════════
 # 섹션 1: 실시간 환율
 # ═════════════════════════════════════════════════════════
 st.markdown("## 💱 실시간 환율 (USD 기준)")
 with st.spinner("환율 데이터 로딩 중..."):
-    rates, updated_at = _fetch_forex()
+    fx = fetch_exchange_rates()
 
-if rates:
-    st.success(f"✅ 환율 업데이트: {updated_at}")
+if fx["ok"] and fx["rates"]:
+    rates = fx["rates"]
+    st.success(f"✅ 환율 업데이트: {fx['updated']}")
 
     # KRW/USD 강조 메트릭
-    krw = rates.get("KRW", 0)
-    eur = rates.get("EUR", 0)
-    jpy = rates.get("JPY", 0)
-    cny = rates.get("CNY", 0)
-
     col1, col2, col3, col4 = st.columns(4)
-    col1.metric("🇺🇸 USD → 🇰🇷 KRW", f"₩ {krw:,.2f}")
-    col2.metric("🇪🇺 USD → EUR", f"€ {eur:.4f}")
-    col3.metric("🇯🇵 USD → JPY", f"¥ {jpy:,.2f}")
-    col4.metric("🇨🇳 USD → CNY", f"¥ {cny:.4f}")
+    col1.metric("🇺🇸 USD → 🇰🇷 KRW", f"₩ {rates.get('KRW', 0):,.2f}")
+    col2.metric("🇪🇺 USD → EUR", f"€ {rates.get('EUR', 0):.4f}")
+    col3.metric("🇯🇵 USD → JPY", f"¥ {rates.get('JPY', 0):,.2f}")
+    col4.metric("🇨🇳 USD → CNY", f"¥ {rates.get('CNY', 0):.4f}")
 
     st.markdown("### 주요 통화 대 USD 환율 테이블")
     rows = []
@@ -93,8 +70,7 @@ if rates:
                 "1 USD 기준": f"{rate_val:,.4f}",
                 "1 단위 → USD": f"${usd_per_unit:.6f}",
             })
-    df_rates = pd.DataFrame(rows)
-    st.dataframe(df_rates, use_container_width=True, hide_index=True)
+    st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
 
     # KRW 환율 바 차트 시각화
     st.markdown("### 주요 통화 1단위당 원화 환산")
@@ -103,9 +79,9 @@ if rates:
         r_val = rates.get(code, None)
         krw_val = rates.get("KRW", 1)
         if r_val and krw_val:
-            chart_data[code] = krw_val / r_val
+            chart_data[code] = round(krw_val / r_val, 2)
     if chart_data:
-        df_chart = pd.DataFrame.from_dict({"통화": list(chart_data.keys()), "원화(KRW)": list(chart_data.values())})
+        df_chart = pd.DataFrame({"통화": list(chart_data.keys()), "원화(KRW)": list(chart_data.values())})
         st.bar_chart(df_chart.set_index("통화"))
 else:
     st.error("환율 데이터를 가져오지 못했습니다. 네트워크를 확인하세요.")
@@ -113,38 +89,47 @@ else:
 st.markdown("---")
 
 # ═════════════════════════════════════════════════════════
-# 섹션 2: 유가 모니터링
+# 섹션 2: 유가 실시간 시세
 # ═════════════════════════════════════════════════════════
-st.markdown("## 🛢️ 국제 유가 동향 (WTI · 브렌트 · 두바이)")
-st.info(
-    "국제 유가는 실시간 API 없이는 상업 금융 데이터를 직접 수신하기 어렵습니다. "
-    "대신, 최신 유가 뉴스를 수집하여 현황을 분석합니다. "
-    "정확한 호가가 필요하시면 [인베스팅닷컴](https://kr.investing.com/commodities/crude-oil)을 참고하세요."
-)
+st.markdown("## 🛢️ 국제 유가·에너지 실시간 시세")
 
-oil_tabs = st.tabs(list(OIL_TICKERS.keys()))
-for tab, (oil_name, oil_query) in zip(oil_tabs, OIL_TICKERS.items()):
-    with tab:
-        st.markdown(f"#### 📰 {oil_name} 최신 뉴스")
-        with st.spinner(f"{oil_name} 뉴스 로딩 중..."):
-            oil_news = _fetch_oil_news(oil_query)
-        if oil_news:
-            for n in oil_news:
-                title = n.get("title", "")
-                link = n.get("link", "")
-                source = n.get("source", "")
-                published = n.get("published", "")
-                snippet = n.get("snippet", "")
-                with st.expander(f"📰 {title}", expanded=False):
-                    if snippet:
-                        st.write(snippet)
-                    meta_cols = st.columns([2, 2, 1])
-                    meta_cols[0].caption(f"📰 {source}")
-                    meta_cols[1].caption(f"🕒 {published}")
-                    if link:
-                        meta_cols[2].link_button("원문 보기", link)
+# 메트릭 카드 (현재가 + 등락)
+oil_cols = st.columns(len(OIL_FUTURES))
+for col, (symbol, (name, icon)) in zip(oil_cols, OIL_FUTURES.items()):
+    with col:
+        d = fetch_stock_data(symbol, period="5d")
+        if d.get("ok"):
+            delta_str = f"{d['change']:+.2f} ({d['change_pct']:+.2f}%)"
+            col.metric(f"{icon} {name}", f"${d['price']:,.2f}", delta=delta_str)
         else:
-            st.warning("현재 뉴스를 가져오지 못했습니다.")
+            col.metric(f"{icon} {name}", "N/A", help="데이터 로딩 실패")
+
+# WTI / 브렌트 상세 차트
+oil_period = st.selectbox("차트 기간", ["5d", "1mo", "3mo", "6mo", "1y"], index=1, key="oil_period")
+
+oil_tabs = st.tabs(["WTI 원유", "브렌트유", "난방유", "천연가스"])
+for tab, (symbol, (name, icon)) in zip(oil_tabs, OIL_FUTURES.items()):
+    with tab:
+        d = fetch_stock_data(symbol, period=oil_period)
+        if d.get("ok") and d.get("history"):
+            st.markdown(f"#### {icon} {name} 추이")
+            df = pd.DataFrame(d["history"])
+            st.line_chart(df.set_index("Date")["Close"])
+
+            # 통계
+            prices = [r["Close"] for r in d["history"]]
+            if prices:
+                avg_p = sum(prices) / len(prices)
+                total_chg = prices[-1] - prices[0]
+                total_pct = (total_chg / prices[0] * 100) if prices[0] else 0
+                sc1, sc2, sc3, sc4, sc5 = st.columns(5)
+                sc1.metric("현재", f"${prices[-1]:,.2f}")
+                sc2.metric("최고", f"${max(prices):,.2f}")
+                sc3.metric("최저", f"${min(prices):,.2f}")
+                sc4.metric("평균", f"${avg_p:,.2f}")
+                sc5.metric("기간 등락", f"{total_chg:+,.2f} ({total_pct:+.1f}%)")
+        else:
+            st.warning(f"{name} 데이터를 가져오지 못했습니다.")
 
 st.markdown("---")
 
@@ -164,13 +149,18 @@ if analysis_news:
         source = n.get("source", "")
         published = n.get("published", "")
         snippet = n.get("snippet", "")
-        st.markdown(f"**[{title}]({link})**")
-        if snippet:
-            st.caption(snippet[:160] + "..." if len(snippet) > 160 else snippet)
-        st.caption(f"📰 {source}  |  🕒 {published}")
-        st.markdown("---")
+        with st.expander(f"📰 {title}", expanded=False):
+            if snippet:
+                st.write(snippet)
+            meta = st.columns([2, 2, 1])
+            meta[0].caption(f"📰 {source}")
+            meta[1].caption(f"🕒 {published}")
+            if link:
+                meta[2].link_button("원문 보기", link)
 else:
     st.info("현재 분석 뉴스를 가져오지 못했습니다.")
+
+st.markdown("---")
 
 # ═════════════════════════════════════════════════════════
 # 섹션 4: 빠른 링크 모니터링
