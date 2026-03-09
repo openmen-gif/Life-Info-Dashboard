@@ -4,7 +4,7 @@ import streamlit as st
 import pandas as pd
 import datetime
 from utils.css_loader import apply_custom_css
-from utils.data_fetcher import fetch_stock_data, fetch_news_search, fetch_web_search
+from utils.data_fetcher import fetch_stock_data, fetch_news_search, fetch_web_search, fetch_youtube_search
 from utils.report_downloader import render_download_buttons
 
 apply_custom_css()
@@ -250,6 +250,7 @@ with tab_expert:
         with st.spinner("최신 트렌드 및 뉴스 수집 중..."):
             web_results = fetch_web_search(query, limit=5)
             news_results = fetch_news_search(query, limit=5)
+            youtube_results = fetch_youtube_search(query, limit=8)
 
             dates = pd.date_range(end=datetime.datetime.today(), periods=7).strftime('%m-%d').tolist()
 
@@ -270,6 +271,7 @@ with tab_expert:
                 "query": query,
                 "web": web_results,
                 "news": news_results,
+                "youtube": youtube_results,
                 "df": df,
                 "updated_at": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             }
@@ -305,6 +307,26 @@ with tab_expert:
             st.info("관련 웹 검색 결과를 찾지 못했습니다.")
 
         st.markdown("---")
+        st.markdown("### 🎬 관련 YouTube 영상")
+        from utils.expert_template import _render_video_card, _parse_view_count
+        if data.get("youtube"):
+            videos = sorted(data["youtube"], key=lambda v: _parse_view_count(v.get("view_count")), reverse=True)
+            main_videos = videos[:4]
+            cols = st.columns(2)
+            for idx, v in enumerate(main_videos):
+                with cols[idx % 2]:
+                    _render_video_card(v, show_desc=True)
+            extra_videos = videos[4:]
+            if extra_videos:
+                with st.expander(f"🎬 더보기 ({len(extra_videos)}건 추가 영상)", expanded=False):
+                    ex_cols = st.columns(2)
+                    for idx, v in enumerate(extra_videos):
+                        with ex_cols[idx % 2]:
+                            _render_video_card(v, show_desc=False)
+        else:
+            st.info("관련 YouTube 영상을 찾지 못했습니다.")
+
+        st.markdown("---")
         trend_records = []
         if isinstance(data.get("df"), pd.DataFrame) and not data["df"].empty:
             trend_records = data["df"].to_dict("records")
@@ -313,11 +335,18 @@ with tab_expert:
             "query": data["query"],
             "news": data["news"],
             "web": data["web"],
+            "youtube": data.get("youtube", []),
             "df": trend_records,
         }
         render_download_buttons(context=data_context)
     else:
         st.info("상단 버튼을 눌러 데이터를 수집하고 인사이트를 확인하세요.")
+
+# ── 관련 YouTube 영상 ─────────────────────────────────────────────────────
+st.markdown("---")
+st.markdown("## 🎬 주식·증시 관련 YouTube 영상")
+from utils.expert_template import render_youtube_section
+_yt_stock12 = render_youtube_section("주식 시황 분석 코스피 나스닥 증시")
 
 # ── 외부 참고 링크 ────────────────────────────────────────────────────────
 st.markdown("---")
