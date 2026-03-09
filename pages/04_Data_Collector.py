@@ -89,69 +89,107 @@ st.markdown("---")
 st.markdown("## 👑 전 분야 파노라마 분석 (마스터 리포트)")
 st.info("16개 모든 생활정보 전문가의 최신 데이터를 한 번에 수집하여 방대한 목차가 포함된 단일 마스터 리포트를 생성합니다.")
 
+# ── 전문가별 기본 쿼리 & session_state 키 매핑 ────────────────────────
+EXPERT_DEFAULTS = [
+    {"name": "생활금융", "state_key": "expert_data_생활금융", "default_query": "재테크 저축 금리 생활금융 동향"},
+    {"name": "건강", "state_key": "expert_data_건강", "default_query": "최신 헬스케어 메디컬 건강관리 동향"},
+    {"name": "식생활", "state_key": "expert_data_식생활", "default_query": "글로벌 외식 국내 맛집 요리 트렌드"},
+    {"name": "부동산", "state_key": "expert_data_부동산", "default_query": "국내 아파트 청약 전세 매매 부동산 동향"},
+    {"name": "교육", "state_key": "expert_data_교육", "default_query": "글로벌 에듀테크 국내 입시 교육 트렌드"},
+    {"name": "여행", "state_key": "expert_data_여행", "default_query": "국내 명소 여행지 호캉스 해외 관광 항공권 추천"},
+    {"name": "생활법률", "state_key": "expert_data_생활법률", "default_query": "최신 생활 법률 대법원 판례 동향"},
+    {"name": "주식 분석", "state_key": "expert_data_주식 분석", "default_query": "국내 코스피 코스닥 미국 증시 주식 시황 분석"},
+    {"name": "쇼핑/소비", "state_key": "expert_data_쇼핑/소비", "default_query": "글로벌 국내 온라인 쇼핑 소비 트렌드"},
+    {"name": "육아/보육", "state_key": "expert_data_육아/보육", "default_query": "저출산 육아용품 글로벌 보육 정책 동향"},
+    {"name": "문화/예술", "state_key": "expert_data_문화/예술", "default_query": "전시 공연 글로벌 K-문화 예술 동향"},
+    {"name": "반려동물", "state_key": "expert_data_반려동물", "default_query": "반려동물 사료 펫 헬스케어 트렌드"},
+    {"name": "화훼/식물", "state_key": "expert_data_화훼/식물", "default_query": "플랜테리어 다육식물 화훼 트렌드"},
+    {"name": "환율 분석", "state_key": "expert_data_환율유가", "default_query": "달러 엔화 글로벌 환율 경제 동향"},
+    {"name": "관세/무역", "state_key": "expert_data_관세/무역", "default_query": "한국 수출입 무역 글로벌 관세 동향"},
+    {"name": "사업/창업", "state_key": "expert_data_사업/창업", "default_query": "스타트업 창업 지원 비즈니스 매크로 동향"},
+    {"name": "운송/물류", "state_key": "expert_data_운송/물류", "default_query": "국내외 물류 해운 항공 운송 트렌드"},
+    {"name": "해외 분쟁/전쟁", "state_key": "expert_data_해외 분쟁/전쟁", "default_query": "우크라이나 중동 글로벌 분쟁 전쟁 동향"},
+    {"name": "유가(국제)", "state_key": None, "default_query": "WTI 브렌트 두바이유 국제 유가 동향"},
+    {"name": "환율(실시간)", "state_key": None, "default_query": "달러 원화 엔화 위안화 환율 실시간 동향"},
+]
+
+# 이전 페이지에서 검색한 쿼리 사용 현황 표시
+st.markdown("#### 📋 각 페이지 검색 현황")
+used_queries = []
+for exp in EXPERT_DEFAULTS:
+    prev = st.session_state.get(exp["state_key"]) if exp["state_key"] else None
+    if prev and prev.get("query"):
+        used_queries.append(f"✅ **{exp['name']}**: `{prev['query']}`")
+    else:
+        used_queries.append(f"⬜ **{exp['name']}**: _{exp['default_query']}_ (기본값)")
+
+with st.expander("검색어 상세 보기", expanded=False):
+    for q in used_queries:
+        st.markdown(q, unsafe_allow_html=True)
+
+st.caption(f"✅ 사용자 검색어 {sum(1 for e in EXPERT_DEFAULTS if st.session_state.get(e['state_key']))}개 / ⬜ 기본값 {sum(1 for e in EXPERT_DEFAULTS if not st.session_state.get(e['state_key']))}개")
+
 if st.button("전 분야 마스터 리포트 생성 시작", type="primary", use_container_width=True):
-    experts = [
-        {"name": "생활금융", "query": "재테크 저축 금리 생활금융 동향"},
-        {"name": "건강", "query": "최신 헬스케어 메디컬 건강관리 동향"},
-        {"name": "식생활", "query": "글로벌 외식 국내 맛집 요리 트렌드"},
-        {"name": "부동산(국내)", "query": "국내 아파트 청약 전세 매매 부동산 동향"},
-        {"name": "부동산(해외)", "query": "해외 상업용 부동산 리츠 투자 동향"},
-        {"name": "교육", "query": "글로벌 에듀테크 국내 입시 교육 트렌드"},
-        {"name": "여행(국내)", "query": "국내 명소 여행지 호캉스 추천"},
-        {"name": "여행(해외)", "query": "해외 여행 관광지 항공권 트렌드"},
-        {"name": "생활법률", "query": "최신 생활 법률 대법원 판례 동향"},
-        {"name": "주식(국내)", "query": "국내 코스피 코스닥 주식 시황 분석"},
-        {"name": "주식(미국/해외)", "query": "미국 증시 S&P 나스닥 해외 주식 분석"},
-        {"name": "쇼핑/소비", "query": "글로벌 국내 온라인 쇼핑 소비 트렌드"},
-        {"name": "육아/보육", "query": "저출산 육아용품 글로벌 보육 정책 동향"},
-        {"name": "문화/예술", "query": "전시 공연 글로벌 K-문화 예술 동향"},
-        {"name": "반려동물", "query": "반려동물 사료 펫 헬스케어 트렌드"},
-        {"name": "화훼/식물", "query": "플랜테리어 다육식물 화훼 트렌드"},
-        {"name": "환율 분석", "query": "달러 엔화 글로벌 환율 경제 동향"},
-        {"name": "관세/무역", "query": "한국 수출입 무역 글로벌 관세 동향"},
-        {"name": "사업/창업", "query": "스타트업 창업 지원 비즈니스 매크로 동향"},
-        {"name": "운송/물류", "query": "국내외 물류 해운 항공 운송 트렌드"},
-        {"name": "해외 분쟁/전쟁", "query": "우크라이나 중동 글로벌 분쟁 전쟁 동향"},
-        {"name": "유가(국제)", "query": "WTI 브렌트 두바이유 국제 유가 동향"},
-        {"name": "환율(실시간)", "query": "달러 원화 엔화 위안화 환율 실시간 동향"}
-    ]
-    
     master_context_list = []
-    
+
     progress_bar = st.progress(0)
     status_text = st.empty()
-    
-    for i, expert in enumerate(experts):
-        status_text.text(f"수집 중: [{expert['name']}] 전문가 데이터 로딩... ({i+1}/{len(experts)})")
-        
-        web_res = fetch_web_search(expert["query"], limit=5)
-        news_res = fetch_news_search(expert["query"], limit=5)
-        
-        # Scenario matrix for master report trend arrays
-        dates = pd.date_range(end=datetime.datetime.today(), periods=7).strftime('%m-%d').tolist()
-        
-        if "주식" in expert["name"] or "코스피" in expert["query"]:
-            values = [6020, 6080, 5010, 4950, 5100, 5150, 5200]
-        elif "환율" in expert["name"]:
-            values = [1350, 1345, 1420, 1450, 1435, 1440, 1445]
-        elif "관세" in expert["name"] or "무역" in expert["name"]:
-            values = [100, 95, 80, 75, 78, 70, 68]
+
+    for i, expert in enumerate(EXPERT_DEFAULTS):
+        # 이전 페이지에서 검색한 데이터가 있으면 재활용
+        prev_data = st.session_state.get(expert["state_key"]) if expert["state_key"] else None
+
+        if prev_data and prev_data.get("query"):
+            query = prev_data["query"]
+            status_text.text(f"수집 중: [{expert['name']}] 기존 검색 데이터 활용 ({i+1}/{len(EXPERT_DEFAULTS)})")
+
+            # 이미 수집된 데이터가 있으면 news/web 재활용, 없으면 새로 수집
+            news_res = prev_data.get("news") or fetch_news_search(query, limit=5)
+            web_res = prev_data.get("web") or fetch_web_search(query, limit=5)
+
+            # 기존 df가 있으면 재활용
+            if prev_data.get("df") is not None:
+                df_data = prev_data["df"]
+                if isinstance(df_data, pd.DataFrame):
+                    df_records = df_data.to_dict("records")
+                else:
+                    df_records = df_data  # already list of dicts
+            else:
+                dates = pd.date_range(end=datetime.datetime.today(), periods=7).strftime('%m-%d').tolist()
+                base_val = hash(query) % 50 + 20
+                values = [base_val + (hash(query + d) % 30) for d in dates]
+                df_records = [{"Date": d, "Trend": v} for d, v in zip(dates, values)]
         else:
-            base_val = hash(expert["query"]) % 50 + 20
-            values = [base_val + (hash(expert["query"] + d) % 30) for d in dates]
-            
-        df_records = [{"Date": d, "Trend": v} for d, v in zip(dates, values)]
-        
+            query = expert["default_query"]
+            status_text.text(f"수집 중: [{expert['name']}] 기본 검색어로 수집... ({i+1}/{len(EXPERT_DEFAULTS)})")
+
+            web_res = fetch_web_search(query, limit=5)
+            news_res = fetch_news_search(query, limit=5)
+
+            dates = pd.date_range(end=datetime.datetime.today(), periods=7).strftime('%m-%d').tolist()
+
+            if "주식" in expert["name"] or "코스피" in query:
+                values = [6020, 6080, 5010, 4950, 5100, 5150, 5200]
+            elif "환율" in expert["name"]:
+                values = [1350, 1345, 1420, 1450, 1435, 1440, 1445]
+            elif "관세" in expert["name"] or "무역" in expert["name"]:
+                values = [100, 95, 80, 75, 78, 70, 68]
+            else:
+                base_val = hash(query) % 50 + 20
+                values = [base_val + (hash(query + d) % 30) for d in dates]
+
+            df_records = [{"Date": d, "Trend": v} for d, v in zip(dates, values)]
+
         ctx = {
             "expert": expert["name"],
-            "query": expert["query"],
+            "query": query,
             "news": news_res,
             "web": web_res,
             "df": df_records
         }
         master_context_list.append(ctx)
-        progress_bar.progress((i + 1) / len(experts))
-        
+        progress_bar.progress((i + 1) / len(EXPERT_DEFAULTS))
+
     st.session_state["master_report_data"] = master_context_list
 
 if "master_report_data" in st.session_state:
