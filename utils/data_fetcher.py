@@ -509,7 +509,7 @@ def fetch_stock_data(symbol: str, period: str = "5d") -> dict:
 
 
 @st.cache_data(ttl=1800, show_spinner=False)
-def fetch_youtube_search(query: str, limit: int = 5) -> list[dict]:
+def fetch_youtube_search(query: str, limit: int = 8) -> list[dict]:
     """Fetch YouTube videos via DuckDuckGo videos search (no API key)."""
     try:
         from duckduckgo_search import DDGS

@@ -93,34 +93,90 @@ def _render_news_trends(news_list: list[dict], title: str):
         st.caption(f"📰 주요 출처: {src_text}")
 
 
-def render_youtube_section(query: str, limit: int = 4) -> list[dict]:
-    """Shared helper: render YouTube video grid and return results for report context."""
+def _parse_view_count(vc) -> int:
+    """Parse view count string to int for sorting."""
+    if not vc:
+        return 0
+    s = str(vc).replace(",", "").replace("회", "").replace("views", "").strip()
+    try:
+        return int(s)
+    except ValueError:
+        return 0
+
+
+def _render_video_card(v: dict, show_desc: bool = False):
+    """Render a single YouTube video card."""
+    if v.get("vid_id"):
+        st.image(v["thumbnail"], use_container_width=True)
+    st.markdown(f"**[{v['title']}]({v['url']})**")
+
+    # Metadata line
+    meta_parts = []
+    if v.get("uploader"):
+        meta_parts.append(f"📺 {v['uploader']}")
+    if v.get("duration"):
+        meta_parts.append(f"⏱ {v['duration']}")
+    vc = _parse_view_count(v.get("view_count"))
+    if vc > 0:
+        if vc >= 10000:
+            meta_parts.append(f"🔥 {vc:,}회")
+        else:
+            meta_parts.append(f"👁 {vc:,}회")
+    if v.get("published"):
+        meta_parts.append(f"📅 {v['published'][:10]}")
+    if meta_parts:
+        st.caption(" | ".join(meta_parts))
+
+    # Description
+    if show_desc and v.get("description"):
+        st.markdown(
+            f"<small style='color:#888'>{v['description'][:150]}</small>",
+            unsafe_allow_html=True,
+        )
+
+
+def render_youtube_section(query: str, limit: int = 8, initial_show: int = 4) -> list[dict]:
+    """Shared helper: render YouTube video grid with 더보기 expansion.
+
+    Args:
+        query: search query
+        limit: total videos to fetch
+        initial_show: videos shown before expansion
+    """
     videos = fetch_youtube_search(query, limit=limit)
     if not videos:
         st.info("관련 YouTube 영상을 찾지 못했습니다.")
         return []
 
+    # Sort by view count (most popular first)
+    videos_sorted = sorted(videos, key=lambda v: _parse_view_count(v.get("view_count")), reverse=True)
+
+    # Summary metrics
+    total = len(videos_sorted)
+    top_views = _parse_view_count(videos_sorted[0].get("view_count")) if videos_sorted else 0
+    mc1, mc2, mc3 = st.columns(3)
+    mc1.metric("검색 영상", f"{total}건")
+    mc2.metric("최고 조회수", f"{top_views:,}회" if top_views else "N/A")
+    channels = set(v.get("uploader", "") for v in videos_sorted if v.get("uploader"))
+    mc3.metric("채널 수", f"{len(channels)}개")
+
+    # Main grid (initial_show videos)
+    main_videos = videos_sorted[:initial_show]
     cols = st.columns(2)
-    for idx, v in enumerate(videos):
+    for idx, v in enumerate(main_videos):
         with cols[idx % 2]:
-            if v.get("vid_id"):
-                st.image(v["thumbnail"], use_container_width=True)
-                st.markdown(
-                    f"**[{v['title']}]({v['url']})**",
-                    unsafe_allow_html=True,
-                )
-            else:
-                st.markdown(f"**[{v['title']}]({v['url']})**")
-            meta_parts = []
-            if v.get("uploader"):
-                meta_parts.append(f"📺 {v['uploader']}")
-            if v.get("duration"):
-                meta_parts.append(f"⏱ {v['duration']}")
-            if v.get("view_count"):
-                meta_parts.append(f"👁 {v['view_count']}")
-            if meta_parts:
-                st.caption(" | ".join(meta_parts))
-    return videos
+            _render_video_card(v, show_desc=True)
+
+    # 더보기 expandable section
+    extra_videos = videos_sorted[initial_show:]
+    if extra_videos:
+        with st.expander(f"🎬 더보기 ({len(extra_videos)}건 추가 영상)", expanded=False):
+            ex_cols = st.columns(2)
+            for idx, v in enumerate(extra_videos):
+                with ex_cols[idx % 2]:
+                    _render_video_card(v, show_desc=False)
+
+    return videos_sorted
 
 
 def render_expert_page(
@@ -316,24 +372,20 @@ def render_expert_page(
         st.markdown("---")
         st.markdown(f"### 🎬 관련 YouTube 영상")
         if data.get("youtube"):
-            videos = data["youtube"]
+            videos = sorted(data["youtube"], key=lambda v: _parse_view_count(v.get("view_count")), reverse=True)
+            initial_show = 4
+            main_videos = videos[:initial_show]
             cols = st.columns(2)
-            for idx, v in enumerate(videos):
+            for idx, v in enumerate(main_videos):
                 with cols[idx % 2]:
-                    if v.get("vid_id"):
-                        st.image(v["thumbnail"], use_container_width=True)
-                        st.markdown(f"**[{v['title']}]({v['url']})**")
-                    else:
-                        st.markdown(f"**[{v['title']}]({v['url']})**")
-                    meta_parts = []
-                    if v.get("uploader"):
-                        meta_parts.append(f"📺 {v['uploader']}")
-                    if v.get("duration"):
-                        meta_parts.append(f"⏱ {v['duration']}")
-                    if v.get("view_count"):
-                        meta_parts.append(f"👁 {v['view_count']}")
-                    if meta_parts:
-                        st.caption(" | ".join(meta_parts))
+                    _render_video_card(v, show_desc=True)
+            extra_videos = videos[initial_show:]
+            if extra_videos:
+                with st.expander(f"🎬 더보기 ({len(extra_videos)}건 추가 영상)", expanded=False):
+                    ex_cols = st.columns(2)
+                    for idx, v in enumerate(extra_videos):
+                        with ex_cols[idx % 2]:
+                            _render_video_card(v, show_desc=False)
         else:
             st.info("관련 YouTube 영상을 찾지 못했습니다.")
 

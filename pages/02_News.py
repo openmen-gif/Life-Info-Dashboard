@@ -40,7 +40,7 @@ for tab, cat in zip(tabs, categories):
 st.markdown("---")
 st.markdown("## 🎬 최신 뉴스 관련 YouTube 영상")
 from utils.expert_template import render_youtube_section
-_yt_news = render_youtube_section("오늘 뉴스 시사 이슈 분석", limit=4)
+_yt_news = render_youtube_section("오늘 뉴스 시사 이슈 분석")
 
 # ── 보고서 다운로드 ────────────────────────────────────────────────────────
 st.markdown("---")
