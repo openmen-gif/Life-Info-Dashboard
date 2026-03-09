@@ -545,12 +545,19 @@ def fetch_stock_data(symbol: str, period: str = "5d") -> dict:
 
 
 @st.cache_data(ttl=1800, show_spinner=False)
-def fetch_youtube_search(query: str, limit: int = 12) -> list[dict]:
-    """Fetch YouTube videos via DuckDuckGo videos search (no API key)."""
+def fetch_youtube_search(query: str, limit: int = 12, timelimit: str | None = None) -> list[dict]:
+    """Fetch YouTube videos via DuckDuckGo videos search (no API key).
+
+    Args:
+        timelimit: None (all), "d" (last day), "w" (last week), "m" (last month)
+    """
     try:
         from duckduckgo_search import DDGS
+        kwargs = dict(keywords=query, region="kr-kr", max_results=limit + 5)
+        if timelimit:
+            kwargs["timelimit"] = timelimit
         with DDGS() as ddgs:
-            results = list(ddgs.videos(query, region="kr-kr", max_results=limit + 3))
+            results = list(ddgs.videos(**kwargs))
         items = []
         for r in results:
             url = r.get("content", "")

@@ -145,7 +145,8 @@ def render_youtube_section(query: str, limit: int = 12, per_page: int = 4,
         per_page: videos per page
         sort: "views" (조회수순) or "latest" (최신순)
     """
-    videos = fetch_youtube_search(query, limit=limit)
+    _tl = "w" if sort == "latest" else None
+    videos = fetch_youtube_search(query, limit=limit, timelimit=_tl)
     if not videos:
         st.info("관련 YouTube 영상을 찾지 못했습니다.")
         return []
@@ -317,7 +318,8 @@ def render_expert_page(
         with st.spinner("최신 트렌드 및 뉴스 수집 중..."):
             web_results = fetch_web_search(query, limit=5)
             news_results = fetch_news_search(query, limit=8)
-            youtube_results = fetch_youtube_search(query, limit=12)
+            _yt_tl = "w" if youtube_sort == "latest" else None
+            youtube_results = fetch_youtube_search(query, limit=12, timelimit=_yt_tl)
 
             from utils.data_fetcher import fetch_stock_data as _fsd
 

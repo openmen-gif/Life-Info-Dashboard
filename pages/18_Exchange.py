@@ -151,7 +151,7 @@ with tab_expert:
         with st.spinner("최신 트렌드 및 뉴스 수집 중..."):
             web_results = fetch_web_search(query, limit=5)
             news_results = fetch_news_search(query, limit=5)
-            youtube_results = fetch_youtube_search(query, limit=12)
+            youtube_results = fetch_youtube_search(query, limit=12, timelimit="w")
 
             dates = pd.date_range(end=datetime.datetime.today(), periods=7).strftime('%m-%d').tolist()
             # 실시간 환율 기반 트렌드
