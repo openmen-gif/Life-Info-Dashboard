@@ -250,7 +250,7 @@ with tab_expert:
         with st.spinner("최신 트렌드 및 뉴스 수집 중..."):
             web_results = fetch_web_search(query, limit=5)
             news_results = fetch_news_search(query, limit=5)
-            youtube_results = fetch_youtube_search(query, limit=8)
+            youtube_results = fetch_youtube_search(query, limit=12)
 
             dates = pd.date_range(end=datetime.datetime.today(), periods=7).strftime('%m-%d').tolist()
 
@@ -309,20 +309,37 @@ with tab_expert:
         st.markdown("---")
         st.markdown("### 🎬 관련 YouTube 영상")
         from utils.expert_template import _render_video_card, _parse_view_count
+        import math as _math
         if data.get("youtube"):
             videos = sorted(data["youtube"], key=lambda v: _parse_view_count(v.get("view_count")), reverse=True)
-            main_videos = videos[:4]
+            _per_page = 4
+            _total_pages = max(1, _math.ceil(len(videos) / _per_page))
+            _pk = "yt_stock_expert"
+            if _pk not in st.session_state:
+                st.session_state[_pk] = 0
+            _cp = st.session_state[_pk]
+            _s, _e = _cp * _per_page, min((_cp + 1) * _per_page, len(videos))
             cols = st.columns(2)
-            for idx, v in enumerate(main_videos):
+            for idx, v in enumerate(videos[_s:_e]):
                 with cols[idx % 2]:
                     _render_video_card(v, show_desc=True)
-            extra_videos = videos[4:]
-            if extra_videos:
-                with st.expander(f"🎬 더보기 ({len(extra_videos)}건 추가 영상)", expanded=False):
-                    ex_cols = st.columns(2)
-                    for idx, v in enumerate(extra_videos):
-                        with ex_cols[idx % 2]:
-                            _render_video_card(v, show_desc=False)
+            if _total_pages > 1:
+                nav_cols = st.columns(_total_pages + 2)
+                with nav_cols[0]:
+                    if st.button("◀", key=f"{_pk}_prev", disabled=(_cp == 0)):
+                        st.session_state[_pk] = _cp - 1
+                        st.rerun()
+                for _p in range(_total_pages):
+                    with nav_cols[_p + 1]:
+                        _lbl = f"**[{_p+1}]**" if _p == _cp else f"{_p+1}"
+                        if st.button(_lbl, key=f"{_pk}_p{_p}"):
+                            st.session_state[_pk] = _p
+                            st.rerun()
+                with nav_cols[_total_pages + 1]:
+                    if st.button("▶", key=f"{_pk}_next", disabled=(_cp >= _total_pages - 1)):
+                        st.session_state[_pk] = _cp + 1
+                        st.rerun()
+                st.caption(f"페이지 {_cp + 1} / {_total_pages} (총 {len(videos)}건)")
         else:
             st.info("관련 YouTube 영상을 찾지 못했습니다.")
 
