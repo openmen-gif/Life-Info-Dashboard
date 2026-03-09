@@ -337,8 +337,35 @@ def _strip_html(text: str) -> str:
     return clean
 
 
+def _fetch_news_ddg(query: str, limit: int = 10) -> list[dict]:
+    """Fetch news via DuckDuckGo — provides real article snippets."""
+    try:
+        from duckduckgo_search import DDGS
+        with DDGS() as ddgs:
+            results = list(ddgs.news(query, region="kr-kr", max_results=limit))
+        items = []
+        for r in results:
+            title = _strip_html(r.get("title", ""))
+            body = _strip_html(r.get("body", ""))
+            # Ensure snippet is different from title
+            if body and body != title and not body.startswith(title[:20]):
+                snippet = body[:200]
+            else:
+                snippet = ""
+            items.append({
+                "title": title,
+                "link": r.get("url", r.get("link", "")),
+                "source": r.get("source", ""),
+                "published": r.get("date", ""),
+                "snippet": snippet,
+            })
+        return items
+    except Exception:
+        return []
+
+
 def _fetch_news_rss(query: str, limit: int = 10) -> list[dict]:
-    """Standalone fallback: search news via Google News RSS."""
+    """Fallback: search news via Google News RSS."""
     import urllib.parse
     encoded = urllib.parse.quote(query)
     url = f"https://news.google.com/rss/search?q={encoded}&hl=ko&gl=KR&ceid=KR:ko"
@@ -346,13 +373,17 @@ def _fetch_news_rss(query: str, limit: int = 10) -> list[dict]:
         feed = feedparser.parse(url)
         items = []
         for entry in feed.entries[:limit]:
-            raw_summary = entry.get("summary", "") or ""
-            snippet = _strip_html(raw_summary)[:200]
-            # If snippet is just a URL or too short, use title as snippet
+            raw_title = _strip_html(entry.get("title", ""))
+            raw_summary = _strip_html(entry.get("summary", "") or "")[:200]
+            # Google News RSS summary often equals title — detect and clear
+            if raw_summary and raw_summary != raw_title and not raw_summary.startswith(raw_title[:20]):
+                snippet = raw_summary
+            else:
+                snippet = ""
             if snippet.startswith("http") or len(snippet) < 10:
                 snippet = ""
             items.append({
-                "title": _strip_html(entry.get("title", "")),
+                "title": raw_title,
                 "link": entry.get("link", ""),
                 "source": entry.get("source", {}).get("title", ""),
                 "published": entry.get("published", ""),
@@ -363,8 +394,33 @@ def _fetch_news_rss(query: str, limit: int = 10) -> list[dict]:
         return []
 
 
+def _fetch_web_ddg(query: str, limit: int = 10) -> list[dict]:
+    """Fetch web results via DuckDuckGo — provides real snippets."""
+    try:
+        from duckduckgo_search import DDGS
+        with DDGS() as ddgs:
+            results = list(ddgs.text(query, region="kr-kr", max_results=limit))
+        items = []
+        for r in results:
+            title = _strip_html(r.get("title", ""))
+            body = _strip_html(r.get("body", ""))
+            if body and body != title:
+                snippet = body[:200]
+            else:
+                snippet = ""
+            items.append({
+                "title": title,
+                "link": r.get("href", r.get("link", "")),
+                "source": "",
+                "snippet": snippet,
+            })
+        return items
+    except Exception:
+        return []
+
+
 def fetch_web_search(query: str, limit: int = 10) -> list[dict]:
-    """Fetch web search results. API mode uses backend, standalone uses RSS."""
+    """Fetch web search results. DuckDuckGo first, then RSS fallback."""
     results = []
     if IS_API_MODE:
         try:
@@ -373,6 +429,8 @@ def fetch_web_search(query: str, limit: int = 10) -> list[dict]:
             results = r.json().get("results", [])
         except Exception:
             pass
+    if not results:
+        results = _fetch_web_ddg(query, limit=limit)
     if not results:
         results = _fetch_news_rss(query, limit=limit)
     domain = _detect_domain(query)
@@ -439,7 +497,7 @@ def fetch_stock_data(symbol: str, period: str = "5d") -> dict:
 
 
 def fetch_news_search(query: str, limit: int = 10) -> list[dict]:
-    """Fetch news search results. API mode uses backend, standalone uses RSS."""
+    """Fetch news search results. DuckDuckGo first (better snippets), then RSS fallback."""
     news = []
     if IS_API_MODE:
         try:
@@ -448,6 +506,8 @@ def fetch_news_search(query: str, limit: int = 10) -> list[dict]:
             news = r.json().get("news", [])
         except Exception:
             pass
+    if not news:
+        news = _fetch_news_ddg(query, limit=limit)
     if not news:
         news = _fetch_news_rss(query, limit=limit)
     domain = _detect_domain(query)

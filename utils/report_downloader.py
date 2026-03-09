@@ -1281,6 +1281,13 @@ def _gen_word(query, news, web, trend, now_str, table_data=None) -> bytes:
             row.cells[1].text = title_text[:60]
             row.cells[2].text = _clean_text(n.get("source", ""))
             snippet = _clean_text(n.get("snippet", ""))
+            # Prevent snippet = title duplication
+            if snippet and len(title_text) > 10 and (
+                snippet == title_text
+                or title_text.startswith(snippet[:20])
+                or snippet.startswith(title_text[:20])
+            ):
+                snippet = ""
             row.cells[3].text = snippet[:100] + ("..." if len(snippet) > 100 else "")
 
         # Hyperlinks below table (compact)
