@@ -9,6 +9,7 @@ import datetime
 import pandas as pd
 from utils.css_loader import apply_custom_css
 from utils.data_fetcher import fetch_exchange_rates, fetch_stock_data, fetch_news_search
+from utils.report_downloader import render_download_buttons
 
 apply_custom_css()
 
@@ -176,3 +177,27 @@ with link_cols[1]:
 with link_cols[2]:
     st.link_button("📊 한국은행 환율 통계", "https://www.bok.or.kr/portal/singl/baseRate/selBasicRate.do?menuNo=200643", use_container_width=True)
     st.link_button("📊 EIA 유가 통계", "https://www.eia.gov/petroleum/", use_container_width=True)
+
+# ── 보고서 다운로드 ────────────────────────────────────────────────────────
+st.markdown("---")
+oil_dl_data = []
+for symbol, (name, icon) in OIL_FUTURES.items():
+    d = fetch_stock_data(symbol, period="5d")
+    if d.get("ok"):
+        oil_dl_data.append({"항목": name, "현재가": d["price"], "전일비": d["change"], "등락률": f"{d['change_pct']}%"})
+
+fx_dl = fetch_exchange_rates()
+fx_rows = []
+if fx_dl.get("ok") and fx_dl.get("rates"):
+    for code, label in TARGET_CURRENCIES.items():
+        r_val = fx_dl["rates"].get(code)
+        if r_val:
+            fx_rows.append({"통화": label, "코드": code, "환율(1USD)": r_val})
+
+oil_exchange_context = {
+    "query": "유가 환율 실시간 모니터링",
+    "news": analysis_news if analysis_news else [],
+    "web": [],
+    "df": oil_dl_data + fx_rows,
+}
+render_download_buttons(context=oil_exchange_context)

@@ -10,6 +10,7 @@ import datetime
 import pandas as pd
 from utils.css_loader import apply_custom_css
 from utils.data_fetcher import fetch_stock_data, fetch_news_search
+from utils.report_downloader import render_download_buttons
 
 apply_custom_css()
 
@@ -293,3 +294,24 @@ with link_cols[1]:
 with link_cols[2]:
     st.link_button("📈 인베스팅닷컴", "https://kr.investing.com/indices/", use_container_width=True)
     st.link_button("📈 TradingView", "https://www.tradingview.com/", use_container_width=True)
+
+# ── 보고서 다운로드 ────────────────────────────────────────────────────────
+st.markdown("---")
+stock_dl_data = []
+for indices, flag in [(KR_INDICES, "🇰🇷"), (US_INDICES, "🇺🇸")]:
+    for symbol, name in indices.items():
+        d = fetch_stock_data(symbol, period="5d")
+        if d.get("ok"):
+            stock_dl_data.append({
+                "지수": f"{flag} {name}", "현재가": d["price"],
+                "전일비": d["change"], "등락률": f"{d['change_pct']}%",
+                "고가": d["high"], "저가": d["low"],
+            })
+
+stock_monitor_context = {
+    "query": "국내외 주식 실시간 모니터링",
+    "news": (kr_news or []) + (us_news or []),
+    "web": [],
+    "df": stock_dl_data,
+}
+render_download_buttons(context=stock_monitor_context)

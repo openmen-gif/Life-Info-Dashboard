@@ -2,6 +2,7 @@
 import streamlit as st
 from utils.css_loader import apply_custom_css
 from utils.data_fetcher import fetch_weather
+from utils.report_downloader import render_download_buttons
 import streamlit.components.v1 as components
 
 apply_custom_css()
@@ -122,3 +123,15 @@ with tab4:
             frameborder="0"></iframe>
     """
     components.html(html_windfinder, height=620)
+
+# ── 보고서 다운로드 ────────────────────────────────────────────────────────
+st.markdown("---")
+weather_context = {
+    "query": f"{weather.get('city', city_input)} 날씨 정보",
+    "news": [],
+    "web": [],
+    "df": [{"도시": weather.get("city", city_input), "기온": weather["temp"],
+            "체감온도": weather["feels_like"], "습도": weather["humidity"],
+            "풍속": weather["wind_speed"], "상태": weather["desc"]}],
+}
+render_download_buttons(context=weather_context)
