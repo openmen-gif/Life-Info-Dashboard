@@ -5,4 +5,14 @@ from utils.expert_template import render_expert_page
 
 apply_custom_css()
 
-render_expert_page(title="육아/보육", icon="👶", default_query="저출산 육아용품 글로벌 보육 정책 동향")
+render_expert_page(
+    title="육아/보육",
+    icon="👶",
+    default_query="저출산 육아용품 글로벌 보육 정책 동향",
+    auto_news_query="육아 보육 저출산 출산 정책 지원금",
+    external_links=[
+        ("👶 아이사랑포털", "https://www.childcare.go.kr/"),
+        ("📋 복지로", "https://www.bokjiro.go.kr/"),
+        ("🏫 어린이집정보", "https://info.childcare.go.kr/"),
+    ],
+)
