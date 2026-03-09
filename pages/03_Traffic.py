@@ -9,6 +9,7 @@ render_expert_page(
     title="교통",
     icon="🚗",
     default_query="고속도로 교통 정체 도로 상황 실시간",
+    youtube_sort="latest",
     sub_topics=[
         ("🛣️", "고속도로", "고속도로 정체 교통량 통행료 휴게소"),
         ("🚇", "대중교통", "지하철 버스 노선 파업 운행 대중교통"),

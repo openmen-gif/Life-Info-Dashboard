@@ -181,7 +181,7 @@ with link_cols[2]:
 # ── 관련 YouTube 영상 ─────────────────────────────────────────────────────
 st.markdown("## 🎬 유가·환율 관련 YouTube 영상")
 from utils.expert_template import render_youtube_section
-_yt_oil = render_youtube_section("유가 환율 경제 분석")
+_yt_oil = render_youtube_section("유가 환율 경제 분석", sort="latest")
 
 # ── 보고서 다운로드 ────────────────────────────────────────────────────────
 st.markdown("---")

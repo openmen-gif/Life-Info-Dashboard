@@ -308,10 +308,10 @@ with tab_expert:
 
         st.markdown("---")
         st.markdown("### 🎬 관련 YouTube 영상")
-        from utils.expert_template import _render_video_card, _parse_view_count
+        from utils.expert_template import _render_video_card
         import math as _math
         if data.get("youtube"):
-            videos = sorted(data["youtube"], key=lambda v: _parse_view_count(v.get("view_count")), reverse=True)
+            videos = sorted(data["youtube"], key=lambda v: v.get("published", ""), reverse=True)
             _per_page = 4
             _total_pages = max(1, _math.ceil(len(videos) / _per_page))
             _pk = "yt_stock_expert"
@@ -363,7 +363,7 @@ with tab_expert:
 st.markdown("---")
 st.markdown("## 🎬 주식·증시 관련 YouTube 영상")
 from utils.expert_template import render_youtube_section
-_yt_stock12 = render_youtube_section("주식 시황 분석 코스피 나스닥 증시")
+_yt_stock12 = render_youtube_section("주식 시황 분석 코스피 나스닥 증시", sort="latest")
 
 # ── 외부 참고 링크 ────────────────────────────────────────────────────────
 st.markdown("---")

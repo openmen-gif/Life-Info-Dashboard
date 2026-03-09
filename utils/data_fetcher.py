@@ -273,6 +273,34 @@ def _fetch_news_local(category: str, limit: int) -> list[dict]:
         return []
 
 def _fetch_traffic_local() -> list[dict]:
+    """Fetch real-time traffic info via news search (no API key)."""
+    try:
+        from duckduckgo_search import DDGS
+        with DDGS() as ddgs:
+            results = list(ddgs.news("고속도로 교통 실시간 정체 상황", region="kr-kr", max_results=5))
+        items = []
+        for r in results:
+            title = _strip_html(r.get("title", ""))
+            body = r.get("body", "")
+            route = title[:40] if title else "교통 정보"
+            status, speed, color = "정보", 0, "blue"
+            for kw, st_val, spd, clr in [
+                ("정체", "정체", 20, "red"), ("지체", "지체", 30, "orange"),
+                ("서행", "서행", 45, "orange"), ("혼잡", "혼잡", 35, "orange"),
+                ("원활", "원활", 90, "green"), ("소통", "원활", 85, "green"),
+            ]:
+                if kw in title or kw in body:
+                    status, speed, color = st_val, spd, clr
+                    break
+            items.append({
+                "route": route, "status": status, "speed_kmh": speed,
+                "color": color, "source": r.get("source", ""),
+                "link": r.get("url", ""), "published": r.get("date", ""),
+            })
+        if items:
+            return items
+    except Exception:
+        pass
     return [
         {"route": "경부고속도로 (서울→부산)", "status": "원활", "speed_kmh": 95, "color": "green"},
         {"route": "서해안고속도로 (서울→목포)", "status": "서행", "speed_kmh": 45, "color": "orange"},

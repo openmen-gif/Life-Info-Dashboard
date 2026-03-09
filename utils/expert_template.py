@@ -135,28 +135,37 @@ def _render_video_card(v: dict, show_desc: bool = False):
         )
 
 
-def render_youtube_section(query: str, limit: int = 12, per_page: int = 4) -> list[dict]:
+def render_youtube_section(query: str, limit: int = 12, per_page: int = 4,
+                           sort: str = "views") -> list[dict]:
     """Shared helper: render YouTube video grid with page navigation.
 
     Args:
         query: search query
         limit: total videos to fetch
         per_page: videos per page
+        sort: "views" (조회수순) or "latest" (최신순)
     """
     videos = fetch_youtube_search(query, limit=limit)
     if not videos:
         st.info("관련 YouTube 영상을 찾지 못했습니다.")
         return []
 
-    # Sort by view count (most popular first)
-    videos_sorted = sorted(videos, key=lambda v: _parse_view_count(v.get("view_count")), reverse=True)
+    # Sort
+    if sort == "latest":
+        videos_sorted = sorted(videos, key=lambda v: v.get("published", ""), reverse=True)
+    else:
+        videos_sorted = sorted(videos, key=lambda v: _parse_view_count(v.get("view_count")), reverse=True)
 
     # Summary metrics
     total = len(videos_sorted)
     top_views = _parse_view_count(videos_sorted[0].get("view_count")) if videos_sorted else 0
     mc1, mc2, mc3 = st.columns(3)
     mc1.metric("검색 영상", f"{total}건")
-    mc2.metric("최고 조회수", f"{top_views:,}회" if top_views else "N/A")
+    if sort == "latest":
+        newest = videos_sorted[0].get("published", "")[:10] if videos_sorted else "N/A"
+        mc2.metric("최신 영상", newest)
+    else:
+        mc2.metric("최고 조회수", f"{top_views:,}회" if top_views else "N/A")
     channels = set(v.get("uploader", "") for v in videos_sorted if v.get("uploader"))
     mc3.metric("채널 수", f"{len(channels)}개")
 
@@ -208,6 +217,7 @@ def render_expert_page(
     external_links: list | None = None,
     auto_news_query: str | None = None,
     sub_topics: list | None = None,
+    youtube_sort: str = "views",
 ):
     """
     Render a standard expert page with search, statistics, reporting,
@@ -216,6 +226,7 @@ def render_expert_page(
     Args:
         tickers: {symbol: display_name} for yfinance real-time metrics
         external_links: [(label, url), ...] for reference links
+        youtube_sort: "views" (조회수순) or "latest" (최신순)
         auto_news_query: auto-load news on page open (no button needed)
         sub_topics: [(tab_icon, tab_name, search_query), ...] for categorized news tabs
     """
@@ -394,7 +405,10 @@ def render_expert_page(
         st.markdown(f"### 🎬 관련 YouTube 영상")
         if data.get("youtube"):
             import math as _math
-            videos = sorted(data["youtube"], key=lambda v: _parse_view_count(v.get("view_count")), reverse=True)
+            if youtube_sort == "latest":
+                videos = sorted(data["youtube"], key=lambda v: v.get("published", ""), reverse=True)
+            else:
+                videos = sorted(data["youtube"], key=lambda v: _parse_view_count(v.get("view_count")), reverse=True)
             _per_page = 4
             _total_pages = max(1, _math.ceil(len(videos) / _per_page))
             _pk = f"yt_ep_{title}"
@@ -444,10 +458,11 @@ def render_expert_page(
     else:
         st.info("상단 버튼을 눌러 데이터를 수집하고 인사이트를 확인하세요.")
 
-    # ── 인기 관련 YouTube 영상 (항상 표시) ────────────────────────────────
+    # ── 관련 YouTube 영상 (항상 표시) ─────────────────────────────────────
     st.markdown("---")
-    st.markdown(f"## 🎬 {title} 관련 인기 YouTube 영상")
-    render_youtube_section(f"{title} {default_query.split()[0]} 분석 동향")
+    _sort_label = "최신" if youtube_sort == "latest" else "인기"
+    st.markdown(f"## 🎬 {title} 관련 {_sort_label} YouTube 영상")
+    render_youtube_section(f"{title} {default_query.split()[0]} 분석 동향", sort=youtube_sort)
 
     # ── 외부 참고 링크 ────────────────────────────────────────────────────
     if external_links:

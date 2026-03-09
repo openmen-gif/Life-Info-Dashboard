@@ -298,7 +298,7 @@ with link_cols[2]:
 # ── 관련 YouTube 영상 ─────────────────────────────────────────────────────
 st.markdown("## 🎬 주식 시황 관련 YouTube 영상")
 from utils.expert_template import render_youtube_section
-_yt_stock = render_youtube_section("주식 시황 분석 코스피 나스닥")
+_yt_stock = render_youtube_section("주식 시황 분석 코스피 나스닥", sort="latest")
 
 # ── 보고서 다운로드 ────────────────────────────────────────────────────────
 st.markdown("---")
