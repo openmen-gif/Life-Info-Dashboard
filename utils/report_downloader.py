@@ -303,17 +303,7 @@ def _news_flow_summary(news: list, query: str) -> str:
 
 def _make_trend_chart(trend, query, stats=None) -> io.BytesIO:
     """Generate an enhanced trend chart with statistics overlay."""
-    import matplotlib
-    matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
-    import matplotlib.font_manager as fm
-
-    available_fonts = {f.name for f in fm.fontManager.ttflist}
-    for fname in ["Malgun Gothic", "NanumGothic", "Noto Sans KR", "Noto Sans CJK KR", "Noto Sans CJK JP", "AppleGothic", "DejaVu Sans"]:
-        if fname in available_fonts:
-            plt.rcParams["font.family"] = fname
-            break
-    plt.rcParams["axes.unicode_minus"] = False
+    plt = _setup_korean_font()
 
     dates = [str(r.get("Date", "")) for r in trend]
     values = [r.get("Trend", 0) for r in trend]
@@ -371,19 +361,209 @@ def _make_trend_chart(trend, query, stats=None) -> io.BytesIO:
     return buf
 
 
-def _make_comparison_bar_chart(context_list) -> io.BytesIO:
-    """Generate a cross-domain comparison bar chart for master report."""
+def _setup_korean_font():
+    """Configure matplotlib to use Korean-capable font."""
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
     import matplotlib.font_manager as fm
-
     available_fonts = {f.name for f in fm.fontManager.ttflist}
-    for fname in ["Malgun Gothic", "NanumGothic", "Noto Sans KR", "Noto Sans CJK KR", "Noto Sans CJK JP", "AppleGothic", "DejaVu Sans"]:
+    for fname in ["Malgun Gothic", "NanumGothic", "Noto Sans KR", "Noto Sans CJK KR",
+                   "Noto Sans CJK JP", "AppleGothic", "DejaVu Sans"]:
         if fname in available_fonts:
             plt.rcParams["font.family"] = fname
             break
     plt.rcParams["axes.unicode_minus"] = False
+    return plt
+
+
+def _make_keyword_freq_chart(news: list, query: str) -> io.BytesIO | None:
+    """Generate keyword frequency horizontal bar chart from news titles."""
+    import re
+    from collections import Counter
+    if not news:
+        return None
+    plt = _setup_korean_font()
+
+    all_titles = " ".join(n.get("title", "") for n in news)
+    words = re.findall(r"[가-힣]{2,}", all_titles)
+    stopwords = {"것으로", "에서", "관련", "대한", "위한", "으로", "이번", "오늘", "내일",
+                 "지난", "올해", "이후", "까지", "부터", "하는", "있는", "없는", "되는",
+                 "한다", "했다", "라며", "이다", "따라", "통해", "대해"}
+    words = [w for w in words if w not in stopwords]
+    freq = Counter(words).most_common(12)
+    if not freq:
+        return None
+
+    labels, counts = zip(*reversed(freq))
+    fig, ax = plt.subplots(figsize=(7, max(3, len(labels) * 0.35)))
+    colors = ["#1976D2" if i < len(labels) - 3 else "#E65100" for i in range(len(labels))]
+    bars = ax.barh(range(len(labels)), counts, color=colors, height=0.6, alpha=0.85)
+    for i, (bar, val) in enumerate(zip(bars, counts)):
+        ax.text(val + 0.3, i, str(val), va="center", fontsize=8, fontweight="bold")
+    ax.set_yticks(range(len(labels)))
+    ax.set_yticklabels(labels, fontsize=9)
+    ax.set_xlabel("빈도", fontsize=10)
+    ax.set_title(f"'{query}' 뉴스 핵심 키워드 빈도 분석", fontsize=11, fontweight="bold")
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+    ax.grid(axis="x", alpha=0.2)
+    fig.tight_layout()
+    buf = io.BytesIO()
+    fig.savefig(buf, format="png", dpi=150, bbox_inches="tight")
+    plt.close(fig)
+    buf.seek(0)
+    return buf
+
+
+def _make_sentiment_pie_chart(news: list) -> io.BytesIO | None:
+    """Generate sentiment distribution pie chart."""
+    if not news:
+        return None
+    plt = _setup_korean_font()
+
+    pos_words = {"상승", "급등", "호재", "성장", "개선", "회복", "활황", "강세", "최고",
+                 "돌파", "증가", "확대", "호조", "긍정", "수혜", "기대", "추천", "인기",
+                 "혁신", "반등", "호황", "흑자"}
+    neg_words = {"하락", "급락", "악재", "위축", "감소", "둔화", "약세", "최저",
+                 "폭락", "축소", "부진", "우려", "경고", "위기", "리스크", "적자",
+                 "침체", "하방", "손실", "붕괴", "악화", "불안", "충격", "규제"}
+
+    pos_count = neg_count = neutral_count = 0
+    for n in news:
+        title = n.get("title", "")
+        has_pos = any(w in title for w in pos_words)
+        has_neg = any(w in title for w in neg_words)
+        if has_pos and not has_neg:
+            pos_count += 1
+        elif has_neg and not has_pos:
+            neg_count += 1
+        elif has_pos and has_neg:
+            pos_count += 0.5
+            neg_count += 0.5
+        else:
+            neutral_count += 1
+
+    values = [pos_count, neg_count, neutral_count]
+    labels = [f"긍정 ({pos_count:.0f}건)", f"부정 ({neg_count:.0f}건)", f"중립 ({neutral_count:.0f}건)"]
+    colors = ["#4CAF50", "#F44336", "#9E9E9E"]
+    explode = (0.05, 0.05, 0)
+
+    fig, ax = plt.subplots(figsize=(5, 4))
+    wedges, texts, autotexts = ax.pie(values, labels=labels, colors=colors, explode=explode,
+                                       autopct="%1.0f%%", startangle=90, pctdistance=0.75)
+    for t in autotexts:
+        t.set_fontsize(10)
+        t.set_fontweight("bold")
+    ax.set_title("뉴스 감성 분포 분석", fontsize=11, fontweight="bold", pad=15)
+    fig.tight_layout()
+    buf = io.BytesIO()
+    fig.savefig(buf, format="png", dpi=150, bbox_inches="tight")
+    plt.close(fig)
+    buf.seek(0)
+    return buf
+
+
+def _make_source_dist_chart(news: list) -> io.BytesIO | None:
+    """Generate news source distribution chart."""
+    from collections import Counter
+    if not news:
+        return None
+    plt = _setup_korean_font()
+
+    sources = [n.get("source", "기타") or "기타" for n in news]
+    freq = Counter(sources).most_common(8)
+    if not freq:
+        return None
+
+    labels, counts = zip(*freq)
+    colors = ["#1976D2", "#388E3C", "#F57C00", "#7B1FA2", "#C62828",
+              "#00838F", "#4E342E", "#546E7A"][:len(labels)]
+
+    fig, ax = plt.subplots(figsize=(5, 4))
+    wedges, texts, autotexts = ax.pie(counts, labels=labels, colors=colors,
+                                       autopct="%1.0f%%", startangle=90, pctdistance=0.8)
+    for t in texts:
+        t.set_fontsize(8)
+    for t in autotexts:
+        t.set_fontsize(8)
+        t.set_fontweight("bold")
+    ax.set_title("뉴스 출처 분포", fontsize=11, fontweight="bold", pad=15)
+    fig.tight_layout()
+    buf = io.BytesIO()
+    fig.savefig(buf, format="png", dpi=150, bbox_inches="tight")
+    plt.close(fig)
+    buf.seek(0)
+    return buf
+
+
+def _make_daily_change_chart(trend: list, query: str) -> io.BytesIO | None:
+    """Generate daily change rate bar chart with outlier detection."""
+    if not trend or len(trend) < 3:
+        return None
+    plt = _setup_korean_font()
+
+    values = [r.get("Trend", 0) for r in trend]
+    dates = [str(r.get("Date", "")) for r in trend]
+    changes = []
+    change_dates = []
+    for i in range(1, len(values)):
+        if values[i - 1] != 0:
+            pct = ((values[i] - values[i - 1]) / values[i - 1]) * 100
+        else:
+            pct = 0
+        changes.append(pct)
+        change_dates.append(dates[i])
+
+    if not changes:
+        return None
+
+    # Outlier detection (beyond 1.5 * IQR)
+    mean_c = sum(changes) / len(changes)
+    std_c = (sum((c - mean_c) ** 2 for c in changes) / max(len(changes) - 1, 1)) ** 0.5
+    threshold = 1.5 * std_c if std_c > 0 else float("inf")
+
+    colors = []
+    for c in changes:
+        if abs(c - mean_c) > threshold:
+            colors.append("#FF6F00")  # outlier
+        elif c >= 0:
+            colors.append("#4CAF50")
+        else:
+            colors.append("#F44336")
+
+    fig, ax = plt.subplots(figsize=(7, 3.5))
+    bars = ax.bar(range(len(changes)), changes, color=colors, alpha=0.85, width=0.6)
+    for i, (bar, val) in enumerate(zip(bars, changes)):
+        y_offset = 0.3 if val >= 0 else -0.3
+        ax.text(i, val + y_offset, f"{val:+.1f}%", ha="center", fontsize=8, fontweight="bold",
+                color=colors[i])
+
+    ax.axhline(y=0, color="black", linewidth=0.5)
+    ax.axhline(y=mean_c, color="#1976D2", linewidth=1, linestyle="--", alpha=0.6,
+               label=f"평균: {mean_c:+.1f}%")
+    if std_c > 0:
+        ax.axhspan(mean_c - threshold, mean_c + threshold, alpha=0.05, color="#1976D2")
+
+    ax.set_xticks(range(len(change_dates)))
+    ax.set_xticklabels(change_dates, rotation=30, ha="right", fontsize=9)
+    ax.set_ylabel("변화율 (%)", fontsize=10)
+    ax.set_title(f"'{query}' 일별 변화율 분석 (주황=이상치)", fontsize=11, fontweight="bold")
+    ax.legend(fontsize=8)
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+    ax.grid(axis="y", alpha=0.2)
+    fig.tight_layout()
+    buf = io.BytesIO()
+    fig.savefig(buf, format="png", dpi=150, bbox_inches="tight")
+    plt.close(fig)
+    buf.seek(0)
+    return buf
+
+
+def _make_comparison_bar_chart(context_list) -> io.BytesIO:
+    """Generate a cross-domain comparison bar chart for master report."""
+    plt = _setup_korean_font()
 
     names = []
     changes = []
@@ -638,15 +818,17 @@ def _gen_word(query, news, web, trend, now_str) -> bytes:
     if trend:
         sections.append((sec_num, "트렌드 분석 및 통계", "sec_trend"))
         sec_num += 1
-    if news:
-        sections.append((sec_num, "뉴스 흐름 분석", "sec_news_flow"))
+        sections.append((sec_num, "변화율 분석 및 이상치 탐지", "sec_change_rate"))
         sec_num += 1
-        sections.append((sec_num, "핵심 뉴스 상세", "sec_news_detail"))
+    if news:
+        sections.append((sec_num, "뉴스 심층 분석 (감성·키워드·출처)", "sec_news_analysis"))
+        sec_num += 1
+        sections.append((sec_num, "주요 뉴스 목록", "sec_news_list"))
         sec_num += 1
     if web:
         sections.append((sec_num, "웹 검색 결과 분석", "sec_web"))
         sec_num += 1
-    sections.append((sec_num, "전문가 인사이트", "sec_expert"))
+    sections.append((sec_num, "전문가 종합 인사이트", "sec_expert"))
     sec_num += 1
     sections.append((sec_num, "참고문헌 (References)", "sec_refs"))
 
@@ -691,10 +873,13 @@ def _gen_word(query, news, web, trend, now_str) -> bytes:
             f"변동성은 {stats['volatility']} 수준(CV={stats['cv']:.1f}%)입니다."
         )
 
-    # Flow analysis in summary
-    flow_text = _news_flow_summary(news, query)
-    if flow_text:
-        summary_parts.append(flow_text)
+    # Brief news summary (detailed flow analysis in dedicated section)
+    if news:
+        themes = _extract_news_themes(news)
+        if themes:
+            summary_parts.append(
+                f"뉴스 핵심 키워드: 【{'、'.join(themes[:5])}】 — 상세 흐름 분석은 별도 섹션을 참조하세요."
+            )
 
     for part in summary_parts:
         p = doc.add_paragraph(part)
@@ -791,41 +976,157 @@ def _gen_word(query, news, web, trend, now_str) -> bytes:
                 )
             doc.add_paragraph(interp)
 
-    # ══ News Flow Analysis ══
-    if news:
+    # ══ Daily Change Rate Analysis ══
+    if trend and len(trend) >= 3:
         doc.add_paragraph("")
-        h = doc.add_heading(f"{current_sec}. 뉴스 흐름 분석 (News Flow Analysis)", level=2)
-        _add_bookmark(h, "sec_news_flow")
+        h = doc.add_heading(f"{current_sec}. 변화율 분석 및 이상치 탐지", level=2)
+        _add_bookmark(h, "sec_change_rate")
         current_sec += 1
 
-        themes = _extract_news_themes(news)
-        if themes:
-            p = doc.add_paragraph()
-            run = p.add_run("▶ 핵심 키워드:")
-            run.bold = True
-            run.font.size = Pt(10)
-            kw_text = "  |  ".join([f"#{t}" for t in themes])
-            p2 = doc.add_paragraph()
-            run = p2.add_run(f"  {kw_text}")
-            run.font.size = Pt(11)
-            run.font.color.rgb = RGBColor(0x1A, 0x23, 0x7E)
-            run.bold = True
+        values = [r.get("Trend", 0) for r in trend]
+        daily_changes = []
+        for idx_c in range(1, len(values)):
+            if values[idx_c - 1] != 0:
+                pct = ((values[idx_c] - values[idx_c - 1]) / values[idx_c - 1]) * 100
+            else:
+                pct = 0
+            daily_changes.append(pct)
+
+        doc.add_paragraph(
+            "일별 변화율을 분석하여 급격한 변동(이상치)을 탐지합니다. "
+            "이상치는 1.5×표준편차를 초과하는 변화율로 정의됩니다."
+        )
+
+        # Chart
+        try:
+            change_buf = _make_daily_change_chart(trend, query)
+            if change_buf:
+                doc.add_picture(change_buf, width=Inches(5.8))
+                last_p = doc.paragraphs[-1]
+                last_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        except Exception:
+            pass
+
+        # Change rate stats
+        if daily_changes:
+            mean_dc = sum(daily_changes) / len(daily_changes)
+            std_dc = (sum((c - mean_dc) ** 2 for c in daily_changes) / max(len(daily_changes) - 1, 1)) ** 0.5
+            max_dc = max(daily_changes)
+            min_dc = min(daily_changes)
+
+            doc.add_paragraph("")
+            cr_table = doc.add_table(rows=5, cols=2, style="Light Shading Accent 1")
+            cr_table.alignment = WD_TABLE_ALIGNMENT.CENTER
+            cr_data = [
+                ("평균 일별 변화율", f"{mean_dc:+.2f}%"),
+                ("변화율 표준편차", f"{std_dc:.2f}%"),
+                ("최대 상승 변화", f"{max_dc:+.2f}%"),
+                ("최대 하락 변화", f"{min_dc:+.2f}%"),
+                ("이상치 탐지 기준", f"±{1.5 * std_dc:.2f}%"),
+            ]
+            for row_idx, (label, val) in enumerate(cr_data):
+                cr_table.rows[row_idx].cells[0].text = label
+                cr_table.rows[row_idx].cells[1].text = val
+
+            # Outlier detection
+            threshold = 1.5 * std_dc if std_dc > 0 else float("inf")
+            outliers = [(i, c) for i, c in enumerate(daily_changes) if abs(c - mean_dc) > threshold]
+            if outliers:
+                doc.add_paragraph("")
+                p = doc.add_paragraph()
+                run = p.add_run(f"▶ 이상치 {len(outliers)}건 탐지:")
+                run.bold = True
+                for oi, oc in outliers:
+                    date_label = trend[oi + 1].get("Date", "") if oi + 1 < len(trend) else ""
+                    doc.add_paragraph(f"  ⚠ {date_label}: {oc:+.2f}% (기준 초과)")
+            else:
+                doc.add_paragraph("분석 기간 내 이상치는 탐지되지 않았습니다. 안정적 변동 패턴입니다.")
+
+    # ══ News Deep Analysis (Sentiment + Keywords + Sources) ══
+    if news:
+        doc.add_paragraph("")
+        h = doc.add_heading(f"{current_sec}. 뉴스 심층 분석 (감성·키워드·출처)", level=2)
+        _add_bookmark(h, "sec_news_analysis")
+        current_sec += 1
+
+        doc.add_paragraph(
+            f"수집된 {len(news)}건의 뉴스에 대해 감성 분석, 핵심 키워드 빈도, 출처 분포를 "
+            f"통계적으로 분석하였습니다."
+        )
+
+        # 1) Sentiment pie chart
+        doc.add_paragraph("")
+        p = doc.add_paragraph()
+        run = p.add_run("▶ 감성 분석 (Sentiment Analysis)")
+        run.bold = True
+        run.font.size = Pt(11)
+
+        try:
+            sent_buf = _make_sentiment_pie_chart(news)
+            if sent_buf:
+                doc.add_picture(sent_buf, width=Inches(4.0))
+                last_p = doc.paragraphs[-1]
+                last_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        except Exception:
+            pass
 
         flow_text = _news_flow_summary(news, query)
         if flow_text:
-            doc.add_paragraph("")
-            p = doc.add_paragraph()
-            run = p.add_run("▶ 종합 흐름 분석")
-            run.bold = True
             doc.add_paragraph(flow_text)
 
-        # Article summary table
+        # 2) Keyword frequency chart
         doc.add_paragraph("")
         p = doc.add_paragraph()
-        run = p.add_run("▶ 기사 요약 매트릭스")
+        run = p.add_run("▶ 핵심 키워드 빈도 분석")
         run.bold = True
+        run.font.size = Pt(11)
 
-        n_display = min(len(news), 8)
+        try:
+            kw_buf = _make_keyword_freq_chart(news, query)
+            if kw_buf:
+                doc.add_picture(kw_buf, width=Inches(5.5))
+                last_p = doc.paragraphs[-1]
+                last_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        except Exception:
+            pass
+
+        themes = _extract_news_themes(news)
+        if themes:
+            doc.add_paragraph(
+                f"상위 키워드: {'、'.join(themes[:8])} — "
+                f"이들 키워드의 빈도 변화를 추적하면 향후 트렌드 선행 지표로 활용 가능합니다."
+            )
+
+        # 3) Source distribution chart
+        doc.add_paragraph("")
+        p = doc.add_paragraph()
+        run = p.add_run("▶ 뉴스 출처 분포 분석")
+        run.bold = True
+        run.font.size = Pt(11)
+
+        try:
+            src_buf = _make_source_dist_chart(news)
+            if src_buf:
+                doc.add_picture(src_buf, width=Inches(4.0))
+                last_p = doc.paragraphs[-1]
+                last_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        except Exception:
+            pass
+
+        from collections import Counter as _Counter
+        sources = [n.get("source", "기타") or "기타" for n in news]
+        src_freq = _Counter(sources).most_common(5)
+        if src_freq:
+            src_text = ", ".join(f"{s} ({c}건)" for s, c in src_freq)
+            doc.add_paragraph(f"주요 보도 매체: {src_text}")
+
+        # ══ News List (compact, no duplication) ══
+        doc.add_paragraph("")
+        h = doc.add_heading(f"{current_sec}. 주요 뉴스 목록", level=2)
+        _add_bookmark(h, "sec_news_list")
+        current_sec += 1
+
+        n_display = min(len(news), 10)
         table = doc.add_table(rows=n_display + 1, cols=4, style="Light Shading Accent 1")
         table.alignment = WD_TABLE_ALIGNMENT.CENTER
         headers = ["No.", "제목", "출처", "요약"]
@@ -839,67 +1140,26 @@ def _gen_word(query, news, web, trend, now_str) -> bytes:
         for idx, n in enumerate(news[:n_display]):
             row = table.rows[idx + 1]
             row.cells[0].text = str(idx + 1)
-            row.cells[1].text = _clean_text(n.get("title", ""))[:50]
+            title_text = _clean_text(n.get("title", ""))
+            row.cells[1].text = title_text[:60]
             row.cells[2].text = _clean_text(n.get("source", ""))
             snippet = _clean_text(n.get("snippet", ""))
-            row.cells[3].text = snippet[:80] + ("..." if len(snippet) > 80 else "")
+            row.cells[3].text = snippet[:100] + ("..." if len(snippet) > 100 else "")
 
-        # ══ News Detail ══
+        # Hyperlinks below table (compact)
         doc.add_paragraph("")
-        h = doc.add_heading(f"{current_sec}. 핵심 뉴스 상세 분석", level=2)
-        _add_bookmark(h, "sec_news_detail")
-        current_sec += 1
-
-        doc.add_paragraph(
-            f"'{query}' 관련 최신 뉴스 {len(news)}건을 수집하여 주요 내용을 상세 정리하였습니다. "
-            f"각 기사의 원문 하이퍼링크를 통해 전문을 확인할 수 있습니다."
-        )
-
-        for i, n in enumerate(news[:10]):
-            title_text = _clean_text(n.get("title", "제목 없음"))
-            source = _clean_text(n.get("source", "출처 미상"))
-            published = n.get("published", "")
+        p = doc.add_paragraph()
+        run = p.add_run("▶ 원문 링크:")
+        run.bold = True
+        run.font.size = Pt(9)
+        for i, n in enumerate(news[:n_display]):
             link = n.get("link", "")
-            snippet = _clean_text(n.get("snippet", ""))
-
-            doc.add_paragraph("")
-            p = doc.add_paragraph()
-            bm_name = f"news_{i}"
-            _add_bookmark(p, bm_name)
-            run = p.add_run(f"기사 [{i + 1}] {title_text}")
-            run.bold = True
-            run.font.size = Pt(11)
-            run.font.color.rgb = RGBColor(0x1A, 0x23, 0x7E)
-
-            # Meta line
-            meta_p = doc.add_paragraph()
-            run = meta_p.add_run(f"출처: {source}")
-            run.font.size = Pt(9)
-            run.font.color.rgb = RGBColor(0x66, 0x66, 0x66)
-            if published:
-                run = meta_p.add_run(f"  |  {published}")
-                run.font.size = Pt(9)
-                run.font.color.rgb = RGBColor(0x66, 0x66, 0x66)
-
-            # Snippet / summary
-            if snippet:
-                p = doc.add_paragraph()
-                run = p.add_run("요약: ")
-                run.bold = True
-                run.font.size = Pt(10)
-                run = p.add_run(snippet)
-                run.font.size = Pt(10)
-            else:
-                doc.add_paragraph("(기사 요약 — 원문 링크에서 전문 확인)")
-
-            # Hyperlink — show title as clickable link, not raw URL
+            title_text = _clean_text(n.get("title", ""))
             if link:
                 link_p = doc.add_paragraph()
-                run = link_p.add_run("원문 보기: ")
-                run.font.size = Pt(9)
-                run.font.color.rgb = RGBColor(0x55, 0x55, 0x55)
-                display_text = title_text[:60] + ("..." if len(title_text) > 60 else "")
-                _add_hyperlink(link_p, display_text, link)
+                run = link_p.add_run(f"  [{i + 1}] ")
+                run.font.size = Pt(8)
+                _add_hyperlink(link_p, title_text[:70] + ("..." if len(title_text) > 70 else ""), link)
 
     # ══ Web Results ══
     if web:
@@ -935,9 +1195,9 @@ def _gen_word(query, news, web, trend, now_str) -> bytes:
                 _add_hyperlink(link_p, title_text[:60] + ("..." if len(title_text) > 60 else ""), link)
             doc.add_paragraph("")
 
-    # ══ Expert Insight ══
+    # ══ Expert Comprehensive Insight ══
     doc.add_paragraph("")
-    h = doc.add_heading(f"{current_sec}. 전문가 인사이트 (Expert Insight)", level=2)
+    h = doc.add_heading(f"{current_sec}. 전문가 종합 인사이트", level=2)
     _add_bookmark(h, "sec_expert")
     current_sec += 1
 
@@ -946,49 +1206,85 @@ def _gen_word(query, news, web, trend, now_str) -> bytes:
     run.bold = True
     run.font.size = Pt(11)
 
-    # Generate expert opinion based on data
-    expert_opinion_parts = []
-    expert_opinion_parts.append(
-        f"'{query}' 분야의 최신 동향을 {domain['framework']} 관점에서 종합 분석하였습니다."
+    # Unique forward-looking analysis (not repeating trend/news sections)
+    doc.add_paragraph(
+        f"이상의 트렌드·뉴스·웹 분석 결과를 {domain['framework']} 관점에서 종합하면 다음과 같습니다."
     )
 
+    insight_parts = []
+    # Risk-opportunity matrix based on combined signals
     if stats:
-        if stats["trend_dir"] == "상승":
-            expert_opinion_parts.append(
-                f"현재 {stats['pct_change']:+.1f}%의 상승 추세를 보이고 있으며, "
-                f"이는 해당 분야에 대한 관심 증가 및 긍정적 시장 심리를 반영합니다. "
-                f"다만 3일 이동평균선 대비 현재 지수의 괴리도를 모니터링하여 "
-                f"과열 여부를 지속적으로 점검할 필요가 있습니다."
+        vol_label = stats["volatility"]
+        trend_label = stats["trend_dir"]
+        if trend_label == "상승" and vol_label == "낮음":
+            insight_parts.append(
+                "【기회 우위】 안정적 상승세로 진입 기회가 유효합니다. "
+                "다만 외부 충격(정책 전환, 글로벌 이벤트)에 따른 급반전 가능성을 "
+                "헤지 전략으로 대비하시기 바랍니다."
             )
-        elif stats["trend_dir"] == "하락":
-            expert_opinion_parts.append(
-                f"현재 {stats['pct_change']:+.1f}%의 하락 추세를 보이고 있어, "
-                f"관련 리스크 요인에 대한 면밀한 분석이 요구됩니다. "
-                f"하락의 주요 원인을 파악하고, 반등 시그널(거래량 증가, 긍정 뉴스 전환 등)을 "
-                f"주시하는 것이 중요합니다."
+        elif trend_label == "상승" and vol_label != "낮음":
+            insight_parts.append(
+                "【주의 필요】 상승세이나 변동성이 높아 과열 신호를 동반합니다. "
+                f"3일 이동평균과의 괴리(현재 지수 대비)를 모니터링하고, "
+                f"변동계수 {stats['cv']:.1f}%가 정상 범위로 회귀하는지 점검하세요."
+            )
+        elif trend_label == "하락":
+            insight_parts.append(
+                "【리스크 경계】 하락 추세에 있으므로 방어적 포지션을 권장합니다. "
+                "반등 시그널(일별 변화율 양전환 2일 연속, 긍정 뉴스 비중 확대)을 "
+                "기다린 후 전략 수정을 검토하세요."
             )
         else:
-            expert_opinion_parts.append(
-                f"현재 보합 추세로, 방향성 결정을 위한 촉매(catalyst)를 기다리는 구간입니다. "
-                f"주요 이벤트(정책 발표, 실적 시즌, 글로벌 이슈)에 따라 "
-                f"방향성이 결정될 가능성이 높습니다."
+            insight_parts.append(
+                "【관망 구간】 방향성이 불분명한 보합 상태입니다. "
+                "정책 발표, 실적 시즌, 계절 요인 등 촉매(catalyst)에 따라 "
+                "방향이 결정될 가능성이 높으므로 이벤트 일정을 주시하세요."
             )
 
-    if news:
-        themes = _extract_news_themes(news)
-        if themes:
-            expert_opinion_parts.append(
-                f"뉴스 분석 결과 핵심 이슈는 【{'、'.join(themes[:4])}】이며, "
-                f"이들 키워드의 빈도 변화를 지속 추적하면 선행 지표로 활용할 수 있습니다."
+    # Cross-signal consistency check
+    if news and stats:
+        # Check if news sentiment aligns with trend direction
+        pos_kw = {"상승", "성장", "개선", "회복", "강세", "호조", "확대", "증가"}
+        neg_kw = {"하락", "위축", "감소", "약세", "부진", "우려", "침체", "위기"}
+        all_titles = " ".join(n.get("title", "") for n in news)
+        p_cnt = sum(1 for w in pos_kw if w in all_titles)
+        n_cnt = sum(1 for w in neg_kw if w in all_titles)
+        news_dir = "긍정" if p_cnt > n_cnt else ("부정" if n_cnt > p_cnt else "중립")
+        trend_dir = stats["trend_dir"]
+
+        if (trend_dir == "상승" and news_dir == "긍정") or (trend_dir == "하락" and news_dir == "부정"):
+            insight_parts.append(
+                f"트렌드({trend_dir})와 뉴스 감성({news_dir})이 일치하여 "
+                f"현재 방향성의 신뢰도가 높습니다."
+            )
+        elif (trend_dir == "상승" and news_dir == "부정") or (trend_dir == "하락" and news_dir == "긍정"):
+            insight_parts.append(
+                f"⚠ 트렌드({trend_dir})와 뉴스 감성({news_dir})이 상충합니다. "
+                f"이는 조만간 추세 전환이 일어날 수 있는 선행 신호일 수 있으므로 "
+                f"향후 1~2일간의 변화를 면밀히 관찰하세요."
             )
 
-    expert_opinion_parts.append(
-        f"향후 전망: 현재 데이터 기반으로 단기(1주) 내 추세 유지 가능성이 높으며, "
-        f"외부 변수(정책, 글로벌 이슈, 계절 요인)에 따른 변동 리스크를 "
-        f"항상 고려하시기 바랍니다."
-    )
+    # Action items
+    doc.add_paragraph("")
+    p = doc.add_paragraph()
+    run = p.add_run("▶ 실행 권고사항 (Action Items)")
+    run.bold = True
+    run.font.size = Pt(11)
 
-    for part in expert_opinion_parts:
+    actions = [
+        f"1. 모니터링 지표 — {', '.join(domain.get('metrics', [])[:3])} 등을 주기적으로 점검",
+        "2. 뉴스 감성 추이 — 긍정/부정 비율 변화를 주 1회 이상 체크",
+    ]
+    if stats and stats.get("cv", 0) > 10:
+        actions.append("3. 변동성 관리 — 변동계수가 높으므로 분산 투자/접근 전략 검토")
+    else:
+        actions.append("3. 기회 포착 — 안정적 환경에서의 신규 진입/확대 기회 검토")
+    actions.append("4. 외부 변수 — 정책, 글로벌 이슈, 계절 요인에 따른 시나리오별 대응 준비")
+
+    for a in actions:
+        doc.add_paragraph(a)
+
+    for part in insight_parts:
         doc.add_paragraph(part)
 
     # ══ References ══
