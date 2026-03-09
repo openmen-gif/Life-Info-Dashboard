@@ -18,7 +18,7 @@ ENV STREAMLIT_SERVER_PORT=7860
 ENV STREAMLIT_SERVER_ADDRESS=0.0.0.0
 ENV STREAMLIT_SERVER_HEADLESS=true
 ENV LIFE_MODE=standalone
-# Build trigger: 2026-03-08T21:30 (realtime weather+exchange)
+# Build trigger: 2026-03-09T01:00 (stock+oil realtime)
 
 CMD ["streamlit", "run", "Dashboard.py", \
      "--server.port=7860", \

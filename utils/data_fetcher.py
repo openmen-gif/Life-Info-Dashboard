@@ -396,6 +396,48 @@ def fetch_exchange_rates() -> dict:
         return {"rates": {}, "updated": str(e), "ok": False}
 
 
+@st.cache_data(ttl=300, show_spinner=False)
+def fetch_stock_data(symbol: str, period: str = "5d") -> dict:
+    """Fetch stock/index data via yfinance (free, no key).
+    Returns: {name, symbol, price, change, change_pct, history_df, ok}
+    """
+    try:
+        import yfinance as yf
+        ticker = yf.Ticker(symbol)
+        hist = ticker.history(period=period)
+        if hist.empty:
+            return {"symbol": symbol, "ok": False}
+        info = ticker.info or {}
+        last_close = float(hist["Close"].iloc[-1])
+        prev_close = float(hist["Close"].iloc[-2]) if len(hist) >= 2 else last_close
+        change = last_close - prev_close
+        change_pct = (change / prev_close * 100) if prev_close else 0
+        # Build a simple history dataframe
+        hist_records = []
+        for dt, row in hist.iterrows():
+            hist_records.append({
+                "Date": dt.strftime("%m-%d"),
+                "Close": round(float(row["Close"]), 2),
+                "Volume": int(row["Volume"]) if row["Volume"] else 0,
+            })
+        return {
+            "name": info.get("shortName", info.get("longName", symbol)),
+            "symbol": symbol,
+            "price": round(last_close, 2),
+            "prev_close": round(prev_close, 2),
+            "change": round(change, 2),
+            "change_pct": round(change_pct, 2),
+            "high": round(float(hist["High"].max()), 2),
+            "low": round(float(hist["Low"].min()), 2),
+            "volume": int(hist["Volume"].iloc[-1]) if hist["Volume"].iloc[-1] else 0,
+            "history": hist_records,
+            "updated": datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
+            "ok": True,
+        }
+    except Exception as e:
+        return {"symbol": symbol, "ok": False, "error": str(e)}
+
+
 def fetch_news_search(query: str, limit: int = 10) -> list[dict]:
     """Fetch news search results. API mode uses backend, standalone uses RSS."""
     news = []
