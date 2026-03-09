@@ -1988,7 +1988,11 @@ def download_report_from_api(report_format: str, context: dict = None):
 
 
 def render_download_buttons(context: dict = None):
-    """Render report download section. Works in both API and standalone mode."""
+    """Render report download section. Works in both API and standalone mode.
+
+    Pre-generates all formats on first render to avoid page scroll jump
+    when download buttons appear dynamically.
+    """
     if context:
         if isinstance(context, list):
             st.markdown("### 📥 전 분야 마스터 리포트 다운로드")
@@ -2000,33 +2004,56 @@ def render_download_buttons(context: dict = None):
         st.markdown("### 📥 통합 보고서 다운로드")
         st.caption("현재 수집된 날씨, 뉴스, 교통 요약 리포트를 다운로드합니다.")
 
-    cols = st.columns(3)
-    formats = [
-        ("Word (.docx)", "word", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "📝"),
-        ("텍스트 (.txt)", "text", "text/plain", "📄"),
-        ("Excel (.xlsx)", "excel", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "📊"),
-    ]
+    # Compute a stable cache key from context to avoid regeneration on every rerun
+    import hashlib
+    ctx_hash = ""
+    if context:
+        try:
+            ctx_str = str(context.get("query", "")) if isinstance(context, dict) else str(len(context))
+            ctx_hash = hashlib.md5(ctx_str.encode()).hexdigest()[:8]
+        except Exception:
+            ctx_hash = "default"
 
     now_str = datetime.datetime.now().strftime('%Y%m%d_%H%M')
+    prefix = "Master_Report" if isinstance(context, list) else ("Expert_Report" if context else "LifeInfo_Summary")
 
-    for i, (label, fmt, mime_type, icon) in enumerate(formats):
+    formats = [
+        ("Word (.docx)", "word", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "📝", ".docx"),
+        ("텍스트 (.txt)", "text", "text/plain", "📄", ".txt"),
+        ("Excel (.xlsx)", "excel", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "📊", ".xlsx"),
+    ]
+
+    # Use session_state to cache generated reports, avoiding regeneration + scroll jump
+    cache_key = f"_report_cache_{ctx_hash}"
+    if cache_key not in st.session_state:
+        st.session_state[cache_key] = {}
+
+    cached = st.session_state[cache_key]
+
+    cols = st.columns(3)
+    for i, (label, fmt, mime_type, icon, ext) in enumerate(formats):
         with cols[i]:
-            if st.button(f"{icon} {label} 생성", key=f"btn_gen_{fmt}"):
-                with st.spinner(f"{label} 생성 중..."):
-                    content = None
-                    if IS_API_MODE:
-                        content = download_report_from_api(fmt, context)
-                    if not content:
-                        content = _generate_local_report(fmt, context)
-                    if content:
-                        ext_map = {"word": ".docx", "text": ".txt", "excel": ".xlsx"}
-                        ext = ext_map.get(fmt, ".txt")
-                        prefix = "Master_Report" if isinstance(context, list) else ("Expert_Report" if context else "LifeInfo_Summary")
-                        filename = f"{prefix}_{now_str}{ext}"
-                        st.download_button(
-                            label=f"👉 {label} 저장",
-                            data=content,
-                            file_name=filename,
-                            mime=mime_type,
-                            key=f"dl_btn_{fmt}_{now_str}"
-                        )
+            filename = f"{prefix}_{now_str}{ext}"
+
+            if fmt in cached and cached[fmt]:
+                # Already generated — show download button directly (no layout shift)
+                st.download_button(
+                    label=f"{icon} {label} 저장",
+                    data=cached[fmt],
+                    file_name=filename,
+                    mime=mime_type,
+                    key=f"dl_{fmt}_{ctx_hash}",
+                )
+            else:
+                # Show generate button
+                if st.button(f"{icon} {label} 생성", key=f"btn_gen_{fmt}_{ctx_hash}"):
+                    with st.spinner(f"{label} 생성 중..."):
+                        content = None
+                        if IS_API_MODE:
+                            content = download_report_from_api(fmt, context)
+                        if not content:
+                            content = _generate_local_report(fmt, context)
+                        if content:
+                            cached[fmt] = content
+                            st.session_state[cache_key] = cached
+                            st.rerun()
