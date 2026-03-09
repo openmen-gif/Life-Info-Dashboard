@@ -8,7 +8,7 @@ import streamlit as st
 import datetime
 import pandas as pd
 from utils.css_loader import apply_custom_css
-from utils.data_fetcher import fetch_exchange_rates, fetch_stock_data, fetch_news_search
+from utils.data_fetcher import fetch_exchange_rates, fetch_stock_data, fetch_news_search, fetch_youtube_search
 from utils.report_downloader import render_download_buttons
 
 apply_custom_css()
@@ -178,6 +178,11 @@ with link_cols[2]:
     st.link_button("📊 한국은행 환율 통계", "https://www.bok.or.kr/portal/singl/baseRate/selBasicRate.do?menuNo=200643", use_container_width=True)
     st.link_button("📊 EIA 유가 통계", "https://www.eia.gov/petroleum/", use_container_width=True)
 
+# ── 관련 YouTube 영상 ─────────────────────────────────────────────────────
+st.markdown("## 🎬 유가·환율 관련 YouTube 영상")
+from utils.expert_template import render_youtube_section
+_yt_oil = render_youtube_section("유가 환율 경제 분석", limit=4)
+
 # ── 보고서 다운로드 ────────────────────────────────────────────────────────
 st.markdown("---")
 oil_dl_data = []
@@ -198,6 +203,7 @@ oil_exchange_context = {
     "query": "유가 환율 실시간 모니터링",
     "news": analysis_news if analysis_news else [],
     "web": [],
+    "youtube": _yt_oil,
     "df": oil_dl_data + fx_rows,
 }
 render_download_buttons(context=oil_exchange_context)

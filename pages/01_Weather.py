@@ -124,12 +124,19 @@ with tab4:
     """
     components.html(html_windfinder, height=620)
 
+# ── 관련 YouTube 영상 ─────────────────────────────────────────────────────
+st.markdown("---")
+st.markdown("## 🎬 날씨·기상 관련 YouTube 영상")
+from utils.expert_template import render_youtube_section
+_yt_weather = render_youtube_section("오늘 날씨 기상 예보", limit=4)
+
 # ── 보고서 다운로드 ────────────────────────────────────────────────────────
 st.markdown("---")
 weather_context = {
     "query": f"{weather.get('city', city_input)} 날씨 정보",
     "news": [],
     "web": [],
+    "youtube": _yt_weather,
     "df": [{"도시": weather.get("city", city_input), "기온": weather["temp"],
             "체감온도": weather["feels_like"], "습도": weather["humidity"],
             "풍속": weather["wind_speed"], "상태": weather["desc"]}],

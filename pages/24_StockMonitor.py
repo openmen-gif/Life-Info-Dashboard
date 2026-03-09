@@ -295,6 +295,11 @@ with link_cols[2]:
     st.link_button("📈 인베스팅닷컴", "https://kr.investing.com/indices/", use_container_width=True)
     st.link_button("📈 TradingView", "https://www.tradingview.com/", use_container_width=True)
 
+# ── 관련 YouTube 영상 ─────────────────────────────────────────────────────
+st.markdown("## 🎬 주식 시황 관련 YouTube 영상")
+from utils.expert_template import render_youtube_section
+_yt_stock = render_youtube_section("주식 시황 분석 코스피 나스닥", limit=4)
+
 # ── 보고서 다운로드 ────────────────────────────────────────────────────────
 st.markdown("---")
 stock_dl_data = []
@@ -312,6 +317,7 @@ stock_monitor_context = {
     "query": "국내외 주식 실시간 모니터링",
     "news": (kr_news or []) + (us_news or []),
     "web": [],
+    "youtube": _yt_stock,
     "df": stock_dl_data,
 }
 render_download_buttons(context=stock_monitor_context)

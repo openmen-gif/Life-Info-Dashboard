@@ -36,6 +36,12 @@ for tab, cat in zip(tabs, categories):
             with col2:
                 st.link_button("읽기", item["link"], use_container_width=True)
 
+# ── 관련 YouTube 영상 ─────────────────────────────────────────────────────
+st.markdown("---")
+st.markdown("## 🎬 최신 뉴스 관련 YouTube 영상")
+from utils.expert_template import render_youtube_section
+_yt_news = render_youtube_section("오늘 뉴스 시사 이슈 분석", limit=4)
+
 # ── 보고서 다운로드 ────────────────────────────────────────────────────────
 st.markdown("---")
 # 모든 탭의 뉴스를 수집하여 다운로드 컨텍스트 생성
@@ -49,6 +55,7 @@ news_context = {
     "query": "종합 뉴스 리포트",
     "news": all_news_items,
     "web": [],
+    "youtube": _yt_news,
     "df": [{"카테고리": cat, "기사수": len(fetch_news(cat, limit=10) or [])} for cat in categories],
 }
 render_download_buttons(context=news_context)

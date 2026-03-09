@@ -508,6 +508,51 @@ def fetch_stock_data(symbol: str, period: str = "5d") -> dict:
         return {"symbol": symbol, "ok": False, "error": str(e)}
 
 
+@st.cache_data(ttl=1800, show_spinner=False)
+def fetch_youtube_search(query: str, limit: int = 5) -> list[dict]:
+    """Fetch YouTube videos via DuckDuckGo videos search (no API key)."""
+    try:
+        from duckduckgo_search import DDGS
+        with DDGS() as ddgs:
+            results = list(ddgs.videos(query, region="kr-kr", max_results=limit + 3))
+        items = []
+        for r in results:
+            url = r.get("content", "")
+            # Only keep YouTube videos
+            if "youtube.com" not in url and "youtu.be" not in url:
+                continue
+            title = _strip_html(r.get("title", ""))
+            desc = _strip_html(r.get("description", ""))
+            # Extract video ID for embed/thumbnail
+            vid_id = ""
+            if "watch?v=" in url:
+                vid_id = url.split("watch?v=")[-1].split("&")[0]
+            elif "youtu.be/" in url:
+                vid_id = url.split("youtu.be/")[-1].split("?")[0]
+            embed_url = f"https://www.youtube.com/embed/{vid_id}" if vid_id else ""
+            thumbnail = f"https://img.youtube.com/vi/{vid_id}/mqdefault.jpg" if vid_id else ""
+            stats = r.get("statistics", {}) or {}
+            items.append({
+                "title": title,
+                "url": url,
+                "embed_url": embed_url,
+                "thumbnail": thumbnail,
+                "vid_id": vid_id,
+                "duration": r.get("duration", ""),
+                "uploader": r.get("uploader", ""),
+                "published": r.get("published", ""),
+                "view_count": stats.get("viewCount", ""),
+                "description": desc[:200] if desc else "",
+            })
+            if len(items) >= limit:
+                break
+        domain = _detect_domain(query)
+        items = _filter_by_domain(items, domain, title_key="title")
+        return items
+    except Exception:
+        return []
+
+
 def fetch_news_search(query: str, limit: int = 10) -> list[dict]:
     """Fetch news search results. DuckDuckGo first (better snippets), then RSS fallback."""
     news = []

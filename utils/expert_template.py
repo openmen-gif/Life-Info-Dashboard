@@ -3,7 +3,7 @@ import datetime
 import re
 from collections import Counter
 import pandas as pd
-from utils.data_fetcher import fetch_web_search, fetch_news_search
+from utils.data_fetcher import fetch_web_search, fetch_news_search, fetch_youtube_search
 from utils.report_downloader import render_download_buttons
 
 # ── 감성 분석 키워드 사전 ─────────────────────────────────────────────────
@@ -91,6 +91,36 @@ def _render_news_trends(news_list: list[dict], title: str):
     if analysis["source_freq"]:
         src_text = " · ".join(f"{s}({c}건)" for s, c in analysis["source_freq"])
         st.caption(f"📰 주요 출처: {src_text}")
+
+
+def render_youtube_section(query: str, limit: int = 4) -> list[dict]:
+    """Shared helper: render YouTube video grid and return results for report context."""
+    videos = fetch_youtube_search(query, limit=limit)
+    if not videos:
+        st.info("관련 YouTube 영상을 찾지 못했습니다.")
+        return []
+
+    cols = st.columns(2)
+    for idx, v in enumerate(videos):
+        with cols[idx % 2]:
+            if v.get("vid_id"):
+                st.image(v["thumbnail"], use_container_width=True)
+                st.markdown(
+                    f"**[{v['title']}]({v['url']})**",
+                    unsafe_allow_html=True,
+                )
+            else:
+                st.markdown(f"**[{v['title']}]({v['url']})**")
+            meta_parts = []
+            if v.get("uploader"):
+                meta_parts.append(f"📺 {v['uploader']}")
+            if v.get("duration"):
+                meta_parts.append(f"⏱ {v['duration']}")
+            if v.get("view_count"):
+                meta_parts.append(f"👁 {v['view_count']}")
+            if meta_parts:
+                st.caption(" | ".join(meta_parts))
+    return videos
 
 
 def render_expert_page(
@@ -199,6 +229,7 @@ def render_expert_page(
         with st.spinner("최신 트렌드 및 뉴스 수집 중..."):
             web_results = fetch_web_search(query, limit=5)
             news_results = fetch_news_search(query, limit=8)
+            youtube_results = fetch_youtube_search(query, limit=4)
 
             from utils.data_fetcher import fetch_stock_data as _fsd
 
@@ -243,6 +274,7 @@ def render_expert_page(
                 "query": query,
                 "web": web_results,
                 "news": news_results,
+                "youtube": youtube_results,
                 "df": df,
                 "updated_at": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             }
@@ -282,6 +314,30 @@ def render_expert_page(
             st.info("관련 웹 검색 결과를 찾지 못했습니다.")
 
         st.markdown("---")
+        st.markdown(f"### 🎬 관련 YouTube 영상")
+        if data.get("youtube"):
+            videos = data["youtube"]
+            cols = st.columns(2)
+            for idx, v in enumerate(videos):
+                with cols[idx % 2]:
+                    if v.get("vid_id"):
+                        st.image(v["thumbnail"], use_container_width=True)
+                        st.markdown(f"**[{v['title']}]({v['url']})**")
+                    else:
+                        st.markdown(f"**[{v['title']}]({v['url']})**")
+                    meta_parts = []
+                    if v.get("uploader"):
+                        meta_parts.append(f"📺 {v['uploader']}")
+                    if v.get("duration"):
+                        meta_parts.append(f"⏱ {v['duration']}")
+                    if v.get("view_count"):
+                        meta_parts.append(f"👁 {v['view_count']}")
+                    if meta_parts:
+                        st.caption(" | ".join(meta_parts))
+        else:
+            st.info("관련 YouTube 영상을 찾지 못했습니다.")
+
+        st.markdown("---")
 
         trend_records = []
         if isinstance(data.get("df"), pd.DataFrame) and not data["df"].empty:
@@ -291,6 +347,7 @@ def render_expert_page(
             "query": data["query"],
             "news": data["news"],
             "web": data["web"],
+            "youtube": data.get("youtube", []),
             "df": trend_records
         }
 

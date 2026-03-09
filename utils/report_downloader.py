@@ -782,14 +782,14 @@ def _add_toc_entry(doc, num, title_text, bookmark_name):
 # Individual Expert Word Report
 # ═══════════════════════════════════════════════════════════════════════════════
 
-def _gen_word(query, news, web, trend, now_str, table_data=None) -> bytes:
+def _gen_word(query, news, web, trend, now_str, table_data=None, youtube=None) -> bytes:
     try:
         from docx import Document
         from docx.shared import Inches, Pt, RGBColor
         from docx.enum.text import WD_ALIGN_PARAGRAPH
         from docx.enum.table import WD_TABLE_ALIGNMENT
     except ImportError:
-        return _gen_text(query, news, web, trend, now_str, table_data=table_data)
+        return _gen_text(query, news, web, trend, now_str, table_data=table_data, youtube=youtube)
 
     domain = _match_expert_domain(query)
     doc = Document()
@@ -845,6 +845,9 @@ def _gen_word(query, news, web, trend, now_str, table_data=None) -> bytes:
         sec_num += 1
     if web:
         sections.append((sec_num, "웹 검색 결과 분석", "sec_web"))
+        sec_num += 1
+    if youtube:
+        sections.append((sec_num, "관련 YouTube 영상", "sec_youtube"))
         sec_num += 1
     sections.append((sec_num, "전문가 종합 인사이트", "sec_expert"))
     sec_num += 1
@@ -1349,6 +1352,47 @@ def _gen_word(query, news, web, trend, now_str, table_data=None) -> bytes:
                 run.font.size = Pt(9)
                 _add_hyperlink(link_p, title_text[:60] + ("..." if len(title_text) > 60 else ""), link)
             doc.add_paragraph("")
+
+    # ══ YouTube Videos ══
+    if youtube:
+        doc.add_paragraph("")
+        h = doc.add_heading(f"{current_sec}. 관련 YouTube 영상", level=2)
+        _add_bookmark(h, "sec_youtube")
+        current_sec += 1
+
+        doc.add_paragraph(
+            f"'{query}' 관련 YouTube 영상 {len(youtube)}건을 수집하였습니다. "
+            f"각 영상의 하이퍼링크를 클릭하면 YouTube에서 시청할 수 있습니다."
+        )
+
+        yt_table = doc.add_table(rows=1 + len(youtube), cols=4, style="Light Shading Accent 1")
+        yt_table.alignment = WD_TABLE_ALIGNMENT.CENTER
+        for ci, hdr in enumerate(["제목", "채널", "재생시간", "조회수"]):
+            cell = yt_table.rows[0].cells[ci]
+            cell.text = hdr
+            for run in cell.paragraphs[0].runs:
+                run.bold = True
+        for yi, yt in enumerate(youtube):
+            row = yt_table.rows[yi + 1]
+            row.cells[0].text = _clean_text(yt.get("title", ""))[:60]
+            row.cells[1].text = _clean_text(yt.get("uploader", ""))
+            row.cells[2].text = str(yt.get("duration", ""))
+            row.cells[3].text = str(yt.get("view_count", ""))
+
+        # YouTube links
+        doc.add_paragraph("")
+        p = doc.add_paragraph()
+        run = p.add_run("▶ YouTube 링크:")
+        run.bold = True
+        run.font.size = Pt(9)
+        for yi, yt in enumerate(youtube):
+            url = yt.get("url", "")
+            title_text = _clean_text(yt.get("title", ""))
+            if url:
+                lp = doc.add_paragraph()
+                run = lp.add_run(f"  [{yi + 1}] ")
+                run.font.size = Pt(8)
+                _add_hyperlink(lp, title_text[:70], url)
 
     # ══ Expert Comprehensive Insight ══
     doc.add_paragraph("")
@@ -1938,7 +1982,7 @@ def _gen_word_master(context_list, now_str) -> bytes:
 # Plain text generators
 # ═══════════════════════════════════════════════════════════════════════════════
 
-def _gen_text(query, news, web, trend, now_str, table_data=None) -> bytes:
+def _gen_text(query, news, web, trend, now_str, table_data=None, youtube=None) -> bytes:
     lines = [f"생활정보 분석 리포트 — {query}", f"생성일시: {now_str}", "=" * 60, ""]
 
     if trend:
@@ -1987,6 +2031,22 @@ def _gen_text(query, news, web, trend, now_str, table_data=None) -> bytes:
         for w in web[:10]:
             lines.append(f"  - {w.get('title', '')}")
             lines.append(f"    {w.get('link', '')}")
+        lines.append("")
+
+    if youtube:
+        lines.append("[ 관련 YouTube 영상 ]")
+        for yt in youtube:
+            lines.append(f"  - {yt.get('title', '')} ({yt.get('duration', '')})")
+            meta = []
+            if yt.get("uploader"):
+                meta.append(f"채널: {yt['uploader']}")
+            if yt.get("view_count"):
+                meta.append(f"조회수: {yt['view_count']}")
+            if meta:
+                lines.append(f"    {' | '.join(meta)}")
+            lines.append(f"    링크: {yt.get('url', '')}")
+        lines.append("")
+
     return "\n".join(lines).encode("utf-8")
 
 
@@ -2022,7 +2082,7 @@ def _gen_text_master(context_list, now_str) -> bytes:
 # Excel generators
 # ═══════════════════════════════════════════════════════════════════════════════
 
-def _gen_excel(query, news, web, trend, now_str, table_data=None) -> bytes:
+def _gen_excel(query, news, web, trend, now_str, table_data=None, youtube=None) -> bytes:
     try:
         import xlsxwriter
         buf = io.BytesIO()
@@ -2122,6 +2182,25 @@ def _gen_excel(query, news, web, trend, now_str, table_data=None) -> bytes:
         ws2.set_column(1, 1, 40)
         ws2.set_column(3, 3, 50)
         ws2.set_column(4, 4, 60)
+
+        # YouTube sheet
+        if youtube:
+            ws3 = wb.add_worksheet("YouTube")
+            ws3.write(0, 0, "No.", header_fmt)
+            ws3.write(0, 1, "제목", header_fmt)
+            ws3.write(0, 2, "채널", header_fmt)
+            ws3.write(0, 3, "재생시간", header_fmt)
+            ws3.write(0, 4, "조회수", header_fmt)
+            ws3.write(0, 5, "링크", header_fmt)
+            for i, yt in enumerate(youtube):
+                ws3.write(1 + i, 0, i + 1)
+                ws3.write(1 + i, 1, yt.get("title", ""))
+                ws3.write(1 + i, 2, yt.get("uploader", ""))
+                ws3.write(1 + i, 3, yt.get("duration", ""))
+                ws3.write(1 + i, 4, yt.get("view_count", ""))
+                ws3.write(1 + i, 5, yt.get("url", ""))
+            ws3.set_column(1, 1, 40)
+            ws3.set_column(5, 5, 60)
 
         wb.close()
         return buf.getvalue()
@@ -2251,6 +2330,7 @@ def _generate_local_report(report_format: str, context=None) -> bytes:
         query = context.get("query", "생활정보")
         news = context.get("news", [])
         web = context.get("web", [])
+        youtube = context.get("youtube", [])
         raw_df = context.get("df", [])
         # Detect if df is trend data (has Trend key) or tabular snapshot data
         if raw_df and isinstance(raw_df[0], dict) and "Trend" in raw_df[0]:
@@ -2263,15 +2343,16 @@ def _generate_local_report(report_format: str, context=None) -> bytes:
         query = "생활정보"
         news = []
         web = []
+        youtube = []
         trend = []
         table_data = []
 
     if report_format == "excel":
-        return _gen_excel(query, news, web, trend, now_str, table_data=table_data)
+        return _gen_excel(query, news, web, trend, now_str, table_data=table_data, youtube=youtube)
     elif report_format == "word":
-        return _gen_word(query, news, web, trend, now_str, table_data=table_data)
+        return _gen_word(query, news, web, trend, now_str, table_data=table_data, youtube=youtube)
     else:
-        return _gen_text(query, news, web, trend, now_str, table_data=table_data)
+        return _gen_text(query, news, web, trend, now_str, table_data=table_data, youtube=youtube)
 
 
 def download_report_from_api(report_format: str, context: dict = None):
