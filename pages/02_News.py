@@ -40,9 +40,10 @@ for tab, cat in zip(tabs, categories):
 st.markdown("---")
 import datetime as _dt
 _today_n = _dt.datetime.now().strftime("%Y년 %m월 %d일")
+_today_n_short = _dt.datetime.now().strftime("%m월 %d일")
 st.markdown(f"## 🎬 {_today_n} 최신 뉴스 YouTube 영상")
 from utils.expert_template import render_youtube_section
-_yt_news = render_youtube_section("오늘 뉴스 시사 이슈 분석 속보", sort="latest")
+_yt_news = render_youtube_section(f"{_today_n_short} 뉴스 시사 이슈 분석 속보", sort="latest")
 
 # ── 보고서 다운로드 ────────────────────────────────────────────────────────
 st.markdown("---")
