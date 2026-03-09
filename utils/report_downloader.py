@@ -1377,28 +1377,74 @@ def _gen_word(query, news, web, trend, now_str, table_data=None) -> bytes:
                 "정책 발표, 실적 시즌, 계절 요인 등 촉매(catalyst)에 따라 "
                 "방향이 결정될 가능성이 높으므로 이벤트 일정을 주시하세요."
             )
+    elif table_data:
+        # For non-trend pages: analyze table data numeric patterns
+        numeric_cols = {}
+        for row in table_data:
+            for k, v in row.items():
+                if isinstance(v, (int, float)):
+                    numeric_cols.setdefault(k, []).append(v)
+        if numeric_cols:
+            # Find columns with notable variation
+            for col_name, vals in numeric_cols.items():
+                if len(vals) >= 2:
+                    col_stats = _calc_statistics(vals)
+                    if col_stats['cv'] > 15:
+                        insight_parts.append(
+                            f"【{col_name} 변동 주의】 {col_name}의 변동계수가 {col_stats['cv']:.1f}%로 "
+                            f"높은 편차를 보이고 있습니다. 평균 {col_stats['mean']:,.2f}, "
+                            f"범위 {col_stats['min']:,.2f}~{col_stats['max']:,.2f}으로 "
+                            f"항목 간 편차가 큰 만큼 개별 항목의 추이를 면밀히 모니터링해야 합니다."
+                        )
+                    elif col_stats['cv'] > 5:
+                        insight_parts.append(
+                            f"【{col_name} 현황】 {col_name}은 평균 {col_stats['mean']:,.2f}으로, "
+                            f"보통 수준의 변동성(CV {col_stats['cv']:.1f}%)을 보이고 있습니다. "
+                            f"최대 {col_stats['max']:,.2f}, 최소 {col_stats['min']:,.2f}입니다."
+                        )
+                    else:
+                        insight_parts.append(
+                            f"【{col_name} 안정】 {col_name}은 평균 {col_stats['mean']:,.2f}으로 안정적입니다. "
+                            f"변동계수 {col_stats['cv']:.1f}%로 항목 간 편차가 적습니다."
+                        )
+        if not insight_parts:
+            insight_parts.append(
+                f"수집된 {len(table_data)}건의 데이터를 기반으로 현재 시장 상황을 점검하세요. "
+                f"주요 지표의 변화를 정기적으로 모니터링하여 조기 대응 체계를 갖추는 것이 중요합니다."
+            )
 
-    # Cross-signal consistency check
-    if news and stats:
-        # Check if news sentiment aligns with trend direction
+    # Cross-signal consistency check (news sentiment analysis)
+    if news:
         pos_kw = {"상승", "성장", "개선", "회복", "강세", "호조", "확대", "증가"}
         neg_kw = {"하락", "위축", "감소", "약세", "부진", "우려", "침체", "위기"}
         all_titles = " ".join(n.get("title", "") for n in news)
         p_cnt = sum(1 for w in pos_kw if w in all_titles)
         n_cnt = sum(1 for w in neg_kw if w in all_titles)
         news_dir = "긍정" if p_cnt > n_cnt else ("부정" if n_cnt > p_cnt else "중립")
-        trend_dir = stats["trend_dir"]
 
-        if (trend_dir == "상승" and news_dir == "긍정") or (trend_dir == "하락" and news_dir == "부정"):
+        if stats:
+            trend_dir = stats["trend_dir"]
+            if (trend_dir == "상승" and news_dir == "긍정") or (trend_dir == "하락" and news_dir == "부정"):
+                insight_parts.append(
+                    f"트렌드({trend_dir})와 뉴스 감성({news_dir})이 일치하여 "
+                    f"현재 방향성의 신뢰도가 높습니다."
+                )
+            elif (trend_dir == "상승" and news_dir == "부정") or (trend_dir == "하락" and news_dir == "긍정"):
+                insight_parts.append(
+                    f"⚠ 트렌드({trend_dir})와 뉴스 감성({news_dir})이 상충합니다. "
+                    f"이는 조만간 추세 전환이 일어날 수 있는 선행 신호일 수 있으므로 "
+                    f"향후 1~2일간의 변화를 면밀히 관찰하세요."
+                )
+        else:
+            # No trend data — provide standalone news sentiment insight
+            sentiment_desc = {
+                "긍정": "긍정적 뉴스가 우세하여 시장/환경이 호의적인 분위기입니다. 다만 과잉 낙관에 유의하세요.",
+                "부정": "부정적 뉴스가 우세하여 경계가 필요한 시점입니다. 리스크 관리에 집중하세요.",
+                "중립": "뉴스 감성이 중립적으로 방향성 판단이 어려운 상황입니다. 추가 데이터를 확인하세요.",
+            }
             insight_parts.append(
-                f"트렌드({trend_dir})와 뉴스 감성({news_dir})이 일치하여 "
-                f"현재 방향성의 신뢰도가 높습니다."
-            )
-        elif (trend_dir == "상승" and news_dir == "부정") or (trend_dir == "하락" and news_dir == "긍정"):
-            insight_parts.append(
-                f"⚠ 트렌드({trend_dir})와 뉴스 감성({news_dir})이 상충합니다. "
-                f"이는 조만간 추세 전환이 일어날 수 있는 선행 신호일 수 있으므로 "
-                f"향후 1~2일간의 변화를 면밀히 관찰하세요."
+                f"뉴스 감성 분석 결과: 【{news_dir}】(긍정 {p_cnt}건, 부정 {n_cnt}건) — "
+                f"{sentiment_desc.get(news_dir, '')}"
             )
 
     # Action items

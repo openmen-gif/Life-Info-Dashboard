@@ -200,29 +200,42 @@ def render_expert_page(
             web_results = fetch_web_search(query, limit=5)
             news_results = fetch_news_search(query, limit=8)
 
-            dates = pd.date_range(end=datetime.datetime.today(), periods=7).strftime('%m-%d').tolist()
+            from utils.data_fetcher import fetch_stock_data as _fsd
 
+            # Determine best ticker for real trend data
+            _proxy_map = {
+                "주식": "^KS11", "코스피": "^KS11", "코스닥": "^KQ11",
+                "환율": "KRW=X", "관세": "^KS11", "무역": "^KS11",
+                "금융": "^KS11", "부동산": "^KS11", "유가": "CL=F",
+                "운송": "BZ=F", "사업": "^KS11",
+            }
+
+            target_sym = None
             if tickers:
-                from utils.data_fetcher import fetch_stock_data as _fsd
-                first_sym = list(tickers.keys())[0]
-                td = _fsd(first_sym, period="5d")
-                if td.get("ok") and td.get("history"):
-                    values = [r["Close"] for r in td["history"][-7:]]
-                    while len(values) < 7:
-                        values.insert(0, values[0] if values else 100)
-                    values = values[:7]
-                else:
-                    base_val = hash(query) % 50 + 20
-                    values = [base_val + (hash(query + d) % 30) for d in dates]
-            elif "주식" in title or "코스피" in query:
-                values = [6020, 6080, 5010, 4950, 5100, 5150, 5200]
-            elif "환율" in title:
-                values = [1350, 1345, 1420, 1450, 1435, 1440, 1445]
-            elif "관세" in title or "무역" in title:
-                values = [100, 95, 80, 75, 78, 70, 68]
+                target_sym = list(tickers.keys())[0]
             else:
-                base_val = hash(query) % 50 + 20
-                values = [base_val + (hash(query + d) % 30) for d in dates]
+                for kw, sym in _proxy_map.items():
+                    if kw in title or kw in query:
+                        target_sym = sym
+                        break
+                if not target_sym:
+                    target_sym = "^KS11"  # Default: KOSPI
+
+            td = _fsd(target_sym, period="7d")
+            if td.get("ok") and td.get("history"):
+                hist = td["history"][-7:]
+                dates = [r.get("Date", "") for r in hist]
+                values = [r["Close"] for r in hist]
+            else:
+                # Fallback: use 5d data
+                td2 = _fsd("^KS11", period="5d")
+                if td2.get("ok") and td2.get("history"):
+                    hist = td2["history"]
+                    dates = [r.get("Date", "") for r in hist]
+                    values = [r["Close"] for r in hist]
+                else:
+                    dates = pd.date_range(end=datetime.datetime.today(), periods=7).strftime('%m-%d').tolist()
+                    values = [0] * len(dates)
 
             df = pd.DataFrame({"Date": dates, "Trend": values})
 
