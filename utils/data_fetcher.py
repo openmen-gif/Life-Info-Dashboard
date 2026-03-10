@@ -336,10 +336,23 @@ def fetch_news(category: str = "종합", limit: int = 10) -> list[dict]:
             r = requests.get(f"{API_BASE_URL}/data/news", params={"category": category, "limit": limit}, timeout=5)
             r.raise_for_status()
             news = r.json().get("news", [])
-            return _deduplicate_news(news)
+            if news:
+                return _deduplicate_news(news)
         except Exception:
             pass
     result = _fetch_news_local(category, limit)
+    if not result:
+        # Google News RSS 차단 시 DDG 뉴스로 폴백
+        _cat_query_map = {
+            "종합": "오늘 뉴스 주요 속보",
+            "IT/과학": "IT 과학 기술 뉴스",
+            "경제": "경제 금융 주식 뉴스",
+            "생활": "생활 사회 뉴스",
+        }
+        query = _cat_query_map.get(category, "오늘 주요 뉴스")
+        result = _fetch_news_ddg(query, limit=limit)
+    if not result:
+        result = _fetch_news_rss(category if category == "종합" else f"{category} 뉴스", limit=limit)
     return _deduplicate_news(result)
 
 @st.cache_data(ttl=1800, show_spinner=False)
@@ -825,50 +838,35 @@ def fetch_youtube_search(query: str, limit: int = 12, timelimit: str | None = No
     Args:
         timelimit: "d"/"w"/"m"/None — when set, YouTube search sorts by upload date.
     """
-    _MIN = 4
     sort_by_date = timelimit is not None
     domain = _detect_domain(query)
     all_items = []
+    existing_ids = set()
 
-    # 1차: YouTube 검색 페이지 직접 파싱 (브라우저와 동일한 결과)
+    def _merge(new_items):
+        for it in new_items:
+            vid = it.get("vid_id", "")
+            url = it.get("url", "")
+            key = vid or url
+            if key and key not in existing_ids:
+                all_items.append(it)
+                existing_ids.add(key)
+
+    # 1차: YouTube 검색 페이지 직접 파싱
     try:
-        scrape_items = _yt_search_scrape(query, limit, sort_by_date=sort_by_date)
-        if scrape_items:
-            all_items.extend(scrape_items)
+        _merge(_yt_search_scrape(query, limit, sort_by_date=sort_by_date))
     except Exception:
         pass
 
-    # 2차: YouTube 채널 RSS (뉴스/날씨/경제 채널 최신 영상) — 항상 시도
+    # 2차: YouTube 채널 RSS — 항상 시도
     try:
-        rss_items = _yt_search_rss(query, limit)
-        if rss_items:
-            # 중복 제거 후 병합
-            existing_ids = {it.get("vid_id") for it in all_items}
-            for it in rss_items:
-                if it.get("vid_id") not in existing_ids:
-                    all_items.append(it)
-                    existing_ids.add(it.get("vid_id"))
+        _merge(_yt_search_rss(query, limit))
     except Exception:
         pass
 
-    # 충분한 결과가 있으면 반환
-    if len(all_items) >= _MIN:
-        filtered = _filter_by_domain(all_items, domain, title_key="title")
-        if sort_by_date:
-            filtered.sort(key=lambda v: v.get("published", ""), reverse=True)
-        return filtered[:limit]
-
-    # 3차: DDG videos fallback
+    # 3차: DDG videos — 항상 시도 (다양한 플랫폼 + 최신 영상 보강)
     try:
-        ddg_items = _yt_search_ddg(query, limit)
-        if ddg_items:
-            existing_ids = {it.get("vid_id") for it in all_items if it.get("vid_id")}
-            for it in ddg_items:
-                vid = it.get("vid_id")
-                if not vid or vid not in existing_ids:
-                    all_items.append(it)
-                    if vid:
-                        existing_ids.add(vid)
+        _merge(_yt_search_ddg(query, limit))
     except Exception:
         pass
 
