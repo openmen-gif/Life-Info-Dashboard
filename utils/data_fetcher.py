@@ -544,14 +544,14 @@ def fetch_stock_data(symbol: str, period: str = "5d") -> dict:
     return {"symbol": symbol, "ok": False}
 
 
-def _yt_search_raw(query: str, limit: int, timelimit: str | None) -> list[dict]:
+def _yt_search_raw(query: str, limit: int, timelimit: str | None = None) -> list[dict]:
     """Internal: run DDG videos search and return parsed YouTube items."""
     from duckduckgo_search import DDGS
-    kwargs: dict = {"keywords": query, "region": "kr-kr", "max_results": limit + 5}
-    if timelimit:
-        kwargs["timelimit"] = timelimit
     with DDGS() as ddgs:
-        results = list(ddgs.videos(**kwargs))
+        if timelimit:
+            results = list(ddgs.videos(query, region="kr-kr", timelimit=timelimit, max_results=limit + 5))
+        else:
+            results = list(ddgs.videos(query, region="kr-kr", max_results=limit + 5))
     items = []
     for r in results:
         url = r.get("content", "")
@@ -589,15 +589,23 @@ def fetch_youtube_search(query: str, limit: int = 12, timelimit: str | None = No
 
     Args:
         timelimit: "d" (day), "w" (week), "m" (month) or None.
-                   If timelimit yields < 4 results, auto-fallback to None.
+                   Progressively widens: d -> w -> m -> None until >= 4 results.
     """
+    _MIN = 4
+    # Build search chain: start from requested timelimit, widen progressively
+    _chain = ["d", "w", "m", None]
+    start_idx = 0
+    if timelimit in _chain:
+        start_idx = _chain.index(timelimit)
+    else:
+        start_idx = len(_chain) - 1  # None
+
     try:
-        items = _yt_search_raw(query, limit, timelimit)
-        # Fallback: if timelimit was set but returned too few results, retry without it
-        if timelimit and len(items) < 4:
-            items_all = _yt_search_raw(query, limit, None)
-            if len(items_all) > len(items):
-                items = items_all
+        for tl in _chain[start_idx:]:
+            items = _yt_search_raw(query, limit, tl)
+            if len(items) >= _MIN:
+                return items
+        # Return whatever we got from the last attempt (None / no timelimit)
         return items
     except Exception:
         return []
