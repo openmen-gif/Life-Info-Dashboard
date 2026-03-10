@@ -46,13 +46,13 @@ with bus_col2:
     bus_region = st.selectbox("지역", ["서울", "경기", "인천", "부산", "대구", "대전", "광주"])
 
 _BUS_SEARCH_URLS = {
-    "서울": "https://bus.go.kr/searchResult6.jsp?searchText=",
-    "경기": "https://www.gbis.go.kr/bus/route/search?keyword=",
-    "인천": "https://bus.incheon.go.kr/search/route?keyword=",
-    "부산": "https://bus.busan.go.kr/busanBIMS/route/search?keyword=",
-    "대구": "https://businfo.daegu.go.kr/ba/route/routeList.do?keyword=",
-    "대전": "https://bus.daejeon.go.kr/search/route?keyword=",
-    "광주": "https://bus.gjcity.go.kr/search/route?keyword=",
+    "서울": "https://bus.go.kr/app/#viewpage/1000001/main.nearbusinfo/1/title=Home%20%EB%B2%84%EC%8A%A4%EC%A0%95%EB%B3%B4",
+    "경기": "https://www.gbis.go.kr/",
+    "인천": "https://bus.incheon.go.kr/",
+    "부산": "https://bus.busan.go.kr/",
+    "대구": "https://businfo.daegu.go.kr/",
+    "대전": "https://bus.daejeon.go.kr/",
+    "광주": "https://bus.gjcity.go.kr/",
 }
 
 if bus_number:
