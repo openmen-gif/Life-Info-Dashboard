@@ -259,7 +259,9 @@ NEWS_FEEDS = {
 def _fetch_news_local(category: str, limit: int) -> list[dict]:
     url = NEWS_FEEDS.get(category, NEWS_FEEDS["종합"])
     try:
-        feed = feedparser.parse(url)
+        # User-Agent 헤더 추가 (HF Spaces에서 Google 차단 우회)
+        _BROWSER_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        feed = feedparser.parse(url, request_headers={"User-Agent": _BROWSER_UA})
         items = []
         for entry in feed.entries[:limit]:
             items.append({
@@ -328,9 +330,16 @@ def fetch_weather(city: str = "Seoul", api_key: Optional[str] = None) -> dict:
             pass  # Fallback to local on API failure
     return _fetch_weather_local(eng_city, api_key)
 
+_NEWS_CAT_QUERY = {
+    "종합": "오늘 뉴스 주요 속보",
+    "IT/과학": "IT 과학 기술 뉴스",
+    "경제": "경제 금융 주식 뉴스",
+    "생활": "생활 사회 뉴스",
+}
+
 @st.cache_data(ttl=1800, show_spinner=False)
 def fetch_news(category: str = "종합", limit: int = 10) -> list[dict]:
-    """Fetch news data from API or fallback to local execution."""
+    """Fetch news: DDG (1순위, HF 안정) → Google RSS (2순위) → RSS 검색 (3순위)."""
     if IS_API_MODE:
         try:
             r = requests.get(f"{API_BASE_URL}/data/news", params={"category": category, "limit": limit}, timeout=5)
@@ -340,19 +349,19 @@ def fetch_news(category: str = "종합", limit: int = 10) -> list[dict]:
                 return _deduplicate_news(news)
         except Exception:
             pass
-    result = _fetch_news_local(category, limit)
+
+    # 1순위: DDG 뉴스 (HF Spaces에서 가장 안정적)
+    query = _NEWS_CAT_QUERY.get(category, "오늘 주요 뉴스")
+    result = _fetch_news_ddg(query, limit=limit)
+
+    # 2순위: Google News RSS (User-Agent 포함)
     if not result:
-        # Google News RSS 차단 시 DDG 뉴스로 폴백
-        _cat_query_map = {
-            "종합": "오늘 뉴스 주요 속보",
-            "IT/과학": "IT 과학 기술 뉴스",
-            "경제": "경제 금융 주식 뉴스",
-            "생활": "생활 사회 뉴스",
-        }
-        query = _cat_query_map.get(category, "오늘 주요 뉴스")
-        result = _fetch_news_ddg(query, limit=limit)
+        result = _fetch_news_local(category, limit)
+
+    # 3순위: Google RSS 검색
     if not result:
-        result = _fetch_news_rss(category if category == "종합" else f"{category} 뉴스", limit=limit)
+        result = _fetch_news_rss(query, limit=limit)
+
     return _deduplicate_news(result)
 
 @st.cache_data(ttl=1800, show_spinner=False)
@@ -423,7 +432,8 @@ def _fetch_news_rss(query: str, limit: int = 10) -> list[dict]:
     encoded = urllib.parse.quote(query)
     url = f"https://news.google.com/rss/search?q={encoded}&hl=ko&gl=KR&ceid=KR:ko"
     try:
-        feed = feedparser.parse(url)
+        _BROWSER_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        feed = feedparser.parse(url, request_headers={"User-Agent": _BROWSER_UA})
         items = []
         for entry in feed.entries[:limit]:
             raw_title = _strip_html(entry.get("title", ""))
