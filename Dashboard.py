@@ -6,7 +6,7 @@ st.set_page_config(
     page_title="Life Info Dashboard",
     page_icon="🏠",
     layout="wide",
-    initial_sidebar_state="expanded",
+    initial_sidebar_state="collapsed",
 )
 apply_custom_css()
 
