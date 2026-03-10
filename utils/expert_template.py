@@ -149,13 +149,13 @@ def _render_video_card(v: dict, show_desc: bool = False):
 
 def render_youtube_section(query: str, limit: int = 12, per_page: int = 4,
                            sort: str = "views") -> list[dict]:
-    """Shared helper: render YouTube video grid with page navigation.
+    """Shared helper: render video grid with page navigation + sort toggle.
 
     Args:
         query: search query
         limit: total videos to fetch
         per_page: videos per page
-        sort: "views" (조회수순) or "latest" (최신순)
+        sort: default sort — "views" (조회수순) or "latest" (최신순)
     """
     _tl = "d" if sort == "latest" else None
     videos = fetch_youtube_search(query, limit=limit, timelimit=_tl)
@@ -163,8 +163,16 @@ def render_youtube_section(query: str, limit: int = 12, per_page: int = 4,
         st.info("관련 영상을 찾지 못했습니다.")
         return []
 
-    # Sort
+    # Sort toggle checkbox
+    sort_key = f"sort_toggle_{query[:20]}"
     if sort == "latest":
+        use_views = st.checkbox("조회수 많은 순으로 보기", key=sort_key, value=False)
+        active_sort = "views" if use_views else "latest"
+    else:
+        use_latest = st.checkbox("최신순으로 보기", key=sort_key, value=False)
+        active_sort = "latest" if use_latest else "views"
+
+    if active_sort == "latest":
         videos_sorted = sorted(videos, key=lambda v: v.get("published", ""), reverse=True)
     else:
         videos_sorted = sorted(videos, key=lambda v: _parse_view_count(v.get("view_count")), reverse=True)
@@ -174,7 +182,7 @@ def render_youtube_section(query: str, limit: int = 12, per_page: int = 4,
     top_views = _parse_view_count(videos_sorted[0].get("view_count")) if videos_sorted else 0
     mc1, mc2, mc3 = st.columns(3)
     mc1.metric("검색 영상", f"{total}건")
-    if sort == "latest":
+    if active_sort == "latest":
         newest = videos_sorted[0].get("published", "")[:10] if videos_sorted else "N/A"
         mc2.metric("최신 영상", newest)
     else:
