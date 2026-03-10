@@ -104,14 +104,26 @@ def _parse_view_count(vc) -> int:
         return 0
 
 
+_PLATFORM_ICONS = {
+    "YouTube": "▶️", "Naver TV": "🟢", "Kakao": "💬",
+    "TikTok": "🎵", "X": "🐦", "Instagram": "📸",
+    "Facebook": "👤", "Vimeo": "🎬",
+}
+
+
 def _render_video_card(v: dict, show_desc: bool = False):
-    """Render a single YouTube video card."""
-    if v.get("vid_id"):
-        st.image(v["thumbnail"], use_container_width=True)
+    """Render a single video card (YouTube + other platforms)."""
+    thumbnail = v.get("thumbnail", "")
+    if thumbnail:
+        st.image(thumbnail, use_container_width=True)
     st.markdown(f"**[{v['title']}]({v['url']})**")
 
     # Metadata line
     meta_parts = []
+    platform = v.get("platform", "")
+    if platform and platform != "YouTube":
+        icon = _PLATFORM_ICONS.get(platform, "🎬")
+        meta_parts.append(f"{icon} {platform}")
     if v.get("uploader"):
         meta_parts.append(f"📺 {v['uploader']}")
     if v.get("duration"):
@@ -148,7 +160,7 @@ def render_youtube_section(query: str, limit: int = 12, per_page: int = 4,
     _tl = "d" if sort == "latest" else None
     videos = fetch_youtube_search(query, limit=limit, timelimit=_tl)
     if not videos:
-        st.info("관련 YouTube 영상을 찾지 못했습니다.")
+        st.info("관련 영상을 찾지 못했습니다.")
         return []
 
     # Sort
@@ -404,7 +416,7 @@ def render_expert_page(
             st.info("관련 웹 검색 결과를 찾지 못했습니다.")
 
         st.markdown("---")
-        st.markdown(f"### 🎬 관련 YouTube 영상")
+        st.markdown(f"### 🎬 관련 영상")
         if data.get("youtube"):
             import math as _math
             if youtube_sort == "latest":
@@ -440,7 +452,7 @@ def render_expert_page(
                         st.rerun()
                 st.caption(f"페이지 {_cp + 1} / {_total_pages} (총 {len(videos)}건)")
         else:
-            st.info("관련 YouTube 영상을 찾지 못했습니다.")
+            st.info("관련 영상을 찾지 못했습니다.")
 
         st.markdown("---")
 
@@ -463,7 +475,7 @@ def render_expert_page(
     # ── 관련 YouTube 영상 (항상 표시) ─────────────────────────────────────
     st.markdown("---")
     _sort_label = "최신" if youtube_sort == "latest" else "인기"
-    st.markdown(f"## 🎬 {title} 관련 {_sort_label} YouTube 영상")
+    st.markdown(f"## 🎬 {title} 관련 {_sort_label} 영상")
     render_youtube_section(f"{title} {default_query.split()[0]} 분석 동향", sort=youtube_sort)
 
     # ── 외부 참고 링크 ────────────────────────────────────────────────────

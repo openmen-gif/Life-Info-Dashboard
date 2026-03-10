@@ -178,8 +178,8 @@ with link_cols[2]:
     st.link_button("📊 한국은행 환율 통계", "https://www.bok.or.kr/portal/singl/baseRate/selBasicRate.do?menuNo=200643", use_container_width=True)
     st.link_button("📊 EIA 유가 통계", "https://www.eia.gov/petroleum/", use_container_width=True)
 
-# ── 관련 YouTube 영상 ─────────────────────────────────────────────────────
-st.markdown("## 🎬 유가·환율 관련 YouTube 영상")
+# ── 관련 영상 ─────────────────────────────────────────────────────
+st.markdown("## 🎬 유가·환율 관련 영상")
 from utils.expert_template import render_youtube_section
 _yt_oil = render_youtube_section("유가 환율 경제 분석", sort="latest")
 

@@ -124,11 +124,11 @@ with tab4:
     """
     components.html(html_windfinder, height=620)
 
-# ── 관련 YouTube 영상 ─────────────────────────────────────────────────────
+# ── 관련 영상 ─────────────────────────────────────────────────────
 st.markdown("---")
 import datetime as _dt
 _today_w = _dt.datetime.now().strftime("%Y년 %m월 %d일")
-st.markdown(f"## 🎬 {_today_w} 날씨·기상 YouTube 영상")
+st.markdown(f"## 🎬 {_today_w} 날씨·기상 영상")
 from utils.expert_template import render_youtube_section
 _yt_weather = render_youtube_section("오늘 날씨 기상 예보 일기예보", sort="latest")
 

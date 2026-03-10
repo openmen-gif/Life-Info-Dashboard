@@ -33,10 +33,10 @@ with col3:
 st.markdown("---")
 render_download_buttons()
 
-# ── 관련 YouTube 영상 ─────────────────────────────────────────────────────
+# ── 관련 영상 ─────────────────────────────────────────────────────
 st.markdown("---")
 _today_str = datetime.datetime.now().strftime("%Y년 %m월 %d일")
-st.markdown(f"## 🎬 {_today_str} 생활정보 YouTube 영상")
+st.markdown(f"## 🎬 {_today_str} 생활정보 영상")
 from utils.expert_template import render_youtube_section
 _yt_home = render_youtube_section("오늘 뉴스 경제 생활 날씨 시사", sort="latest")
 

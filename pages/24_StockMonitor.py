@@ -295,8 +295,8 @@ with link_cols[2]:
     st.link_button("📈 인베스팅닷컴", "https://kr.investing.com/indices/", use_container_width=True)
     st.link_button("📈 TradingView", "https://www.tradingview.com/", use_container_width=True)
 
-# ── 관련 YouTube 영상 ─────────────────────────────────────────────────────
-st.markdown("## 🎬 주식 시황 관련 YouTube 영상")
+# ── 관련 영상 ─────────────────────────────────────────────────────
+st.markdown("## 🎬 주식 시황 관련 영상")
 from utils.expert_template import render_youtube_section
 _yt_stock = render_youtube_section("주식 시황 분석 코스피 나스닥", sort="latest")
 

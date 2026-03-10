@@ -307,7 +307,7 @@ with tab_expert:
             st.info("관련 웹 검색 결과를 찾지 못했습니다.")
 
         st.markdown("---")
-        st.markdown("### 🎬 관련 YouTube 영상")
+        st.markdown("### 🎬 관련 영상")
         from utils.expert_template import _render_video_card
         import math as _math
         if data.get("youtube"):
@@ -341,7 +341,7 @@ with tab_expert:
                         st.rerun()
                 st.caption(f"페이지 {_cp + 1} / {_total_pages} (총 {len(videos)}건)")
         else:
-            st.info("관련 YouTube 영상을 찾지 못했습니다.")
+            st.info("관련 영상을 찾지 못했습니다.")
 
         st.markdown("---")
         trend_records = []
@@ -359,9 +359,9 @@ with tab_expert:
     else:
         st.info("상단 버튼을 눌러 데이터를 수집하고 인사이트를 확인하세요.")
 
-# ── 관련 YouTube 영상 ─────────────────────────────────────────────────────
+# ── 관련 영상 ─────────────────────────────────────────────────────
 st.markdown("---")
-st.markdown("## 🎬 주식·증시 관련 YouTube 영상")
+st.markdown("## 🎬 주식·증시 관련 영상")
 from utils.expert_template import render_youtube_section
 _yt_stock12 = render_youtube_section("주식 시황 분석 코스피 나스닥 증시", sort="latest")
 

@@ -755,29 +755,63 @@ def _yt_search_rss(query: str, limit: int) -> list[dict]:
     return [it for it in items if not (it["vid_id"] in seen or seen.add(it["vid_id"]))][:limit]
 
 
-def _yt_search_ddg(query: str, limit: int) -> list[dict]:
-    """Fallback: DDG videos search."""
+def _yt_search_ddg(query: str, limit: int, youtube_only: bool = False) -> list[dict]:
+    """DDG videos search — includes YouTube + Naver TV + Kakao etc."""
     from duckduckgo_search import DDGS
     with DDGS() as ddgs:
         results = list(ddgs.videos(query, region="kr-kr", max_results=limit + 10))
     items = []
     for r in results:
         url = r.get("content", "")
-        if "youtube.com" not in url and "youtu.be" not in url:
+        if not url:
+            continue
+        # YouTube 전용 모드가 아니면 모든 영상 플랫폼 허용
+        if youtube_only and "youtube.com" not in url and "youtu.be" not in url:
             continue
         title = _strip_html(r.get("title", ""))
         desc = _strip_html(r.get("description", ""))
         vid_id = ""
+        thumbnail = r.get("thumbnail", "") or ""
         if "watch?v=" in url:
             vid_id = url.split("watch?v=")[-1].split("&")[0]
         elif "youtu.be/" in url:
             vid_id = url.split("youtu.be/")[-1].split("?")[0]
+        # YouTube가 아닌 플랫폼도 처리
+        if vid_id:
+            thumbnail = f"https://img.youtube.com/vi/{vid_id}/mqdefault.jpg"
+        # 플랫폼 표시
+        platform = ""
+        if "youtube.com" in url or "youtu.be" in url:
+            platform = "YouTube"
+        elif "naver.com" in url or "tv.naver" in url:
+            platform = "Naver TV"
+        elif "kakao" in url or "daum.net" in url:
+            platform = "Kakao"
+        elif "tiktok.com" in url:
+            platform = "TikTok"
+        elif "twitter.com" in url or "x.com" in url:
+            platform = "X"
+        elif "instagram.com" in url:
+            platform = "Instagram"
+        elif "facebook.com" in url or "fb.watch" in url:
+            platform = "Facebook"
+        elif "vimeo.com" in url:
+            platform = "Vimeo"
         stats = r.get("statistics", {}) or {}
-        items.append(_yt_parse_item(
-            vid_id, title, r.get("uploader", ""),
-            r.get("published", ""), stats.get("viewCount", ""),
-            r.get("duration", ""), desc,
-        ))
+        item = {
+            "title": title,
+            "url": url,
+            "embed_url": f"https://www.youtube.com/embed/{vid_id}" if vid_id else "",
+            "thumbnail": thumbnail,
+            "vid_id": vid_id,
+            "duration": r.get("duration", ""),
+            "uploader": r.get("uploader", ""),
+            "published": r.get("published", ""),
+            "view_count": str(stats.get("viewCount", "")),
+            "description": desc[:200] if desc else "",
+            "platform": platform,
+        }
+        items.append(item)
         if len(items) >= limit:
             break
     return items
