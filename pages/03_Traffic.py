@@ -35,7 +35,9 @@ components.html(
 # ── 버스 실시간 위치 ──────────────────────────────────────────────────
 st.markdown("---")
 st.markdown("### 🚌 버스 실시간 위치 조회")
-st.info("버스 번호를 입력하면 해당 버스의 실시간 위치와 정류장 정보를 확인할 수 있습니다.")
+st.info("버스 번호를 입력하면 실시간 버스 위치·도착 정보를 확인할 수 있습니다.")
+
+import urllib.parse as _urlparse
 
 bus_col1, bus_col2 = st.columns([2, 1])
 with bus_col1:
@@ -45,8 +47,11 @@ with bus_col2:
     st.write("")
     bus_region = st.selectbox("지역", ["서울", "경기", "인천", "부산", "대구", "대전", "광주"])
 
-_BUS_SEARCH_URLS = {
-    "서울": "https://bus.go.kr/app/#viewpage/1000001/main.nearbusinfo/1/title=Home%20%EB%B2%84%EC%8A%A4%EC%A0%95%EB%B3%B4",
+# 정류장 이름 입력 (선택)
+bus_stop = st.text_input("🚏 정류장 이름 (선택)", placeholder="예: 강남역, 서울역, 시청...")
+
+_BUS_SITE_URLS = {
+    "서울": "https://bus.go.kr/",
     "경기": "https://www.gbis.go.kr/",
     "인천": "https://bus.incheon.go.kr/",
     "부산": "https://bus.busan.go.kr/",
@@ -56,13 +61,43 @@ _BUS_SEARCH_URLS = {
 }
 
 if bus_number:
-    base_url = _BUS_SEARCH_URLS.get(bus_region, _BUS_SEARCH_URLS["서울"])
-    search_url = f"{base_url}{bus_number}"
-    st.link_button(
-        f"🔍 {bus_region} {bus_number}번 버스 실시간 위치 확인",
-        search_url,
-        use_container_width=True,
-    )
+    # 네이버 검색 — 버스 실시간 도착 정보 패널 표시
+    if bus_stop:
+        _q_naver = _urlparse.quote_plus(f"{bus_region} {bus_number}번 버스 {bus_stop} 도착")
+    else:
+        _q_naver = _urlparse.quote_plus(f"{bus_region} {bus_number}번 버스 실시간 위치")
+    naver_url = f"https://search.naver.com/search.naver?query={_q_naver}"
+
+    # 카카오맵 — 버스 노선도 + 실시간 위치
+    _q_kakao = _urlparse.quote_plus(f"{bus_number}번 버스")
+    kakao_url = f"https://map.kakao.com/?q={_q_kakao}"
+
+    # 지역 버스정보 사이트
+    site_url = _BUS_SITE_URLS.get(bus_region, _BUS_SITE_URLS["서울"])
+
+    sc1, sc2, sc3 = st.columns(3)
+    with sc1:
+        st.link_button(
+            f"🔍 네이버 버스 도착정보",
+            naver_url,
+            use_container_width=True,
+        )
+    with sc2:
+        st.link_button(
+            f"🗺️ 카카오맵 노선·위치",
+            kakao_url,
+            use_container_width=True,
+        )
+    with sc3:
+        st.link_button(
+            f"🚌 {bus_region} 버스정보",
+            site_url,
+            use_container_width=True,
+        )
+    if bus_stop:
+        st.success(f"📍 **{bus_stop}** 정류장 기준 **{bus_number}번** 버스 도착 정보를 검색합니다.")
+    else:
+        st.caption("💡 정류장 이름을 입력하면 해당 정류장 도착 시간을 바로 검색할 수 있습니다.")
 
 # 버스 정보 바로가기
 st.markdown("**버스 정보 서비스**")
