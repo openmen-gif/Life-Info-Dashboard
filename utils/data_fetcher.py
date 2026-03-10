@@ -544,14 +544,70 @@ def fetch_stock_data(symbol: str, period: str = "5d") -> dict:
     return {"symbol": symbol, "ok": False}
 
 
-def _yt_search_raw(query: str, limit: int, timelimit: str | None = None) -> list[dict]:
-    """Internal: run DDG videos search and return parsed YouTube items."""
+# ── Invidious API (YouTube 검색 1차 소스) ──────────────────────────────────
+_INVIDIOUS_INSTANCES = [
+    "https://vid.puffyan.us",
+    "https://invidious.fdn.fr",
+    "https://inv.nadeko.net",
+]
+
+
+def _yt_search_invidious(query: str, limit: int, sort_by: str = "upload_date") -> list[dict]:
+    """Search YouTube via Invidious API — returns truly latest results."""
+    import urllib.parse
+    params = urllib.parse.urlencode({
+        "q": query, "sort_by": sort_by, "type": "video", "region": "KR",
+    })
+    items = []
+    for base in _INVIDIOUS_INSTANCES:
+        try:
+            resp = requests.get(
+                f"{base}/api/v1/search?{params}",
+                timeout=8,
+                headers={"User-Agent": "Mozilla/5.0"},
+            )
+            if resp.status_code != 200:
+                continue
+            data = resp.json()
+            for v in data:
+                if v.get("type") != "video":
+                    continue
+                vid_id = v.get("videoId", "")
+                # published is unix timestamp
+                pub_ts = v.get("published", 0)
+                pub_str = ""
+                if pub_ts:
+                    pub_str = datetime.datetime.fromtimestamp(pub_ts).strftime("%Y-%m-%dT%H:%M:%S")
+                # Duration formatting
+                length = v.get("lengthSeconds", 0)
+                dur_str = f"{length // 60}:{length % 60:02d}" if length else ""
+                items.append({
+                    "title": v.get("title", ""),
+                    "url": f"https://www.youtube.com/watch?v={vid_id}",
+                    "embed_url": f"https://www.youtube.com/embed/{vid_id}",
+                    "thumbnail": f"https://img.youtube.com/vi/{vid_id}/mqdefault.jpg",
+                    "vid_id": vid_id,
+                    "duration": dur_str,
+                    "uploader": v.get("author", ""),
+                    "published": pub_str,
+                    "view_count": str(v.get("viewCount", "")),
+                    "description": v.get("description", "")[:200],
+                })
+                if len(items) >= limit:
+                    break
+            if items:
+                break  # Got results from this instance
+        except Exception:
+            continue
+    return items
+
+
+# ── DDG fallback ──────────────────────────────────────────────────────────
+def _yt_search_ddg(query: str, limit: int) -> list[dict]:
+    """Fallback: DDG videos search."""
     from duckduckgo_search import DDGS
     with DDGS() as ddgs:
-        if timelimit:
-            results = list(ddgs.videos(query, region="kr-kr", timelimit=timelimit, max_results=limit + 5))
-        else:
-            results = list(ddgs.videos(query, region="kr-kr", max_results=limit + 5))
+        results = list(ddgs.videos(query, region="kr-kr", max_results=limit + 5))
     items = []
     for r in results:
         url = r.get("content", "")
@@ -578,37 +634,40 @@ def _yt_search_raw(query: str, limit: int, timelimit: str | None = None) -> list
         })
         if len(items) >= limit:
             break
-    domain = _detect_domain(query)
-    items = _filter_by_domain(items, domain, title_key="title")
     return items
 
 
 @st.cache_data(ttl=900, show_spinner=False)
 def fetch_youtube_search(query: str, limit: int = 12, timelimit: str | None = None) -> list[dict]:
-    """Fetch YouTube videos via DuckDuckGo videos search (no API key).
+    """Fetch YouTube videos. Invidious API first (latest), DDG fallback.
 
     Args:
-        timelimit: "d" (day), "w" (week), "m" (month) or None.
-                   Progressively widens: d -> w -> m -> None until >= 4 results.
+        timelimit: "d"/"w"/"m"/None — controls Invidious sort_by.
+                   "d"/"w"/"m" → sort by upload_date; None → sort by relevance.
     """
     _MIN = 4
-    # Build search chain: start from requested timelimit, widen progressively
-    _chain = ["d", "w", "m", None]
-    start_idx = 0
-    if timelimit in _chain:
-        start_idx = _chain.index(timelimit)
-    else:
-        start_idx = len(_chain) - 1  # None
+    sort_by = "upload_date" if timelimit else "relevance"
 
     try:
-        for tl in _chain[start_idx:]:
-            items = _yt_search_raw(query, limit, tl)
-            if len(items) >= _MIN:
-                return items
-        # Return whatever we got from the last attempt (None / no timelimit)
-        return items
+        # 1차: Invidious API (실시간 YouTube 검색)
+        items = _yt_search_invidious(query, limit, sort_by=sort_by)
+        if len(items) >= _MIN:
+            domain = _detect_domain(query)
+            return _filter_by_domain(items, domain, title_key="title")
     except Exception:
-        return []
+        pass
+
+    try:
+        # 2차: DDG videos fallback
+        items = _yt_search_ddg(query, limit)
+        domain = _detect_domain(query)
+        items = _filter_by_domain(items, domain, title_key="title")
+        if items:
+            return items
+    except Exception:
+        pass
+
+    return []
 
 
 def fetch_news_search(query: str, limit: int = 10) -> list[dict]:
