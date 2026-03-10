@@ -544,7 +544,8 @@ def fetch_stock_data(symbol: str, period: str = "5d") -> dict:
     return {"symbol": symbol, "ok": False}
 
 
-# ── YouTube 검색: yt-dlp → YouTube RSS → DDG (3단계) ─────────────────────
+# ── YouTube 검색: YouTube 페이지 파싱 → RSS → DDG (3단계) ─────────────────
+import json as _json
 
 def _yt_parse_item(vid_id: str, title: str, uploader: str, pub_str: str,
                    view_count, duration_str: str, desc: str) -> dict:
@@ -563,143 +564,195 @@ def _yt_parse_item(vid_id: str, title: str, uploader: str, pub_str: str,
     }
 
 
-def _yt_search_ytdlp(query: str, limit: int) -> list[dict]:
-    """Search YouTube directly via yt-dlp — most reliable for latest videos."""
+def _yt_search_scrape(query: str, limit: int, sort_by_date: bool = False) -> list[dict]:
+    """Search YouTube by scraping search page — same results as browser.
+
+    Args:
+        sort_by_date: True → sort by upload date (sp=CAI%253D)
+    """
+    import urllib.parse
+    # sp=CAI%3D means sort by upload date on YouTube
+    sp = "&sp=CAI%253D" if sort_by_date else ""
+    url = f"https://www.youtube.com/results?search_query={urllib.parse.quote(query)}{sp}"
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept-Language": "ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7",
+    }
     try:
-        import yt_dlp
-    except ImportError:
+        resp = requests.get(url, headers=headers, timeout=10)
+        if resp.status_code != 200:
+            return []
+    except Exception:
         return []
 
-    search_url = f"ytsearch{limit + 5}:{query}"
-    ydl_opts = {
-        "extract_flat": True,
-        "quiet": True,
-        "no_warnings": True,
-        "skip_download": True,
-        "socket_timeout": 10,
-    }
+    # ytInitialData JSON 추출
+    text = resp.text
     items = []
+
+    # 방법1: var ytInitialData = {...};
+    match = re.search(r'var\s+ytInitialData\s*=\s*(\{.+?\});\s*</script>', text, re.DOTALL)
+    if not match:
+        # 방법2: window["ytInitialData"] = {...};
+        match = re.search(r'window\["ytInitialData"\]\s*=\s*(\{.+?\});\s*</script>', text, re.DOTALL)
+    if not match:
+        return []
+
     try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            result = ydl.extract_info(search_url, download=False)
-            entries = result.get("entries", []) if result else []
-            for e in entries:
-                if not e:
-                    continue
-                vid_id = e.get("id", "")
-                if not vid_id:
-                    continue
-                upload_date = e.get("upload_date", "") or ""
-                pub_str = ""
-                if len(upload_date) == 8:
-                    pub_str = f"{upload_date[:4]}-{upload_date[4:6]}-{upload_date[6:]}T00:00:00"
-                dur = e.get("duration") or 0
-                dur_str = f"{int(dur) // 60}:{int(dur) % 60:02d}" if dur else ""
-                vc = e.get("view_count") or e.get("view_count_text", "") or ""
-                items.append(_yt_parse_item(
-                    vid_id, e.get("title", ""), e.get("uploader", "") or e.get("channel", ""),
-                    pub_str, vc, dur_str, e.get("description", "") or "",
-                ))
-                if len(items) >= limit:
-                    break
+        data = _json.loads(match.group(1))
     except Exception:
-        pass
+        return []
+
+    # JSON 구조 탐색: 검색 결과 videoRenderer 추출
+    try:
+        contents = (data.get("contents", {})
+                    .get("twoColumnSearchResultsRenderer", {})
+                    .get("primaryContents", {})
+                    .get("sectionListRenderer", {})
+                    .get("contents", []))
+    except Exception:
+        return []
+
+    for section in contents:
+        item_section = section.get("itemSectionRenderer", {})
+        for item in item_section.get("contents", []):
+            vr = item.get("videoRenderer")
+            if not vr:
+                continue
+            vid_id = vr.get("videoId", "")
+            if not vid_id:
+                continue
+            # 제목
+            title = ""
+            title_runs = vr.get("title", {}).get("runs", [])
+            if title_runs:
+                title = title_runs[0].get("text", "")
+            # 업로더
+            uploader = ""
+            ch_runs = vr.get("ownerText", {}).get("runs", [])
+            if ch_runs:
+                uploader = ch_runs[0].get("text", "")
+            # 게시일 (상대적: "13일 전", "1개월 전" 등)
+            pub_text = vr.get("publishedTimeText", {}).get("simpleText", "")
+            pub_str = _yt_relative_to_date(pub_text)
+            # 조회수
+            vc_text = vr.get("viewCountText", {}).get("simpleText", "")
+            vc = re.sub(r"[^\d]", "", vc_text)
+            # 길이
+            dur_text = vr.get("lengthText", {}).get("simpleText", "")
+            # 설명
+            desc_parts = vr.get("detailedMetadataSnippets", [{}])
+            desc = ""
+            if desc_parts:
+                snippet_runs = desc_parts[0].get("snippetText", {}).get("runs", [])
+                desc = "".join(r.get("text", "") for r in snippet_runs)
+
+            items.append(_yt_parse_item(vid_id, title, uploader, pub_str, vc, dur_text, desc))
+            if len(items) >= limit:
+                break
+        if len(items) >= limit:
+            break
+
     return items
 
 
-# ── YouTube 채널 RSS (주요 한국 뉴스/정보 채널) ────────────────────────────
-_YT_CHANNELS = {
-    # 뉴스/시사
-    "뉴스": [
-        ("UCcQTRi69dsVYHN3exePtZ1A", "KBS News"),
-        ("UCF4Wxdo3inmxP-Y59wXDsFw", "MBC News"),
-        ("UCkinYTS9IHqOEwR1Ane-6UA", "SBS News"),
-        ("UChlgI3UHCOnwUGzWzbJ3H5w", "YTN"),
-        ("UCsU-I-vHLiaMfQ_5iBYLMoQ", "JTBC News"),
-    ],
-    # 날씨
-    "날씨": [
-        ("UCcQTRi69dsVYHN3exePtZ1A", "KBS News"),
-        ("UCF4Wxdo3inmxP-Y59wXDsFw", "MBC News"),
-        ("UCkinYTS9IHqOEwR1Ane-6UA", "SBS News"),
-        ("UChlgI3UHCOnwUGzWzbJ3H5w", "YTN"),
-    ],
-    # 경제/금융/주식
-    "경제": [
-        ("UC0MhDBzy_MuJVMfxQf0d5lg", "한국경제TV"),
-        ("UCTkbUcCVnMmBOhBDNUBaZXg", "머니투데이방송"),
-        ("UCsU-I-vHLiaMfQ_5iBYLMoQ", "JTBC News"),
-        ("UChlgI3UHCOnwUGzWzbJ3H5w", "YTN"),
-    ],
-}
-
-# 키워드 → 채널 카테고리 매핑
-_CHANNEL_KEYWORDS = {
-    "날씨": "날씨", "기상": "날씨", "예보": "날씨", "일기예보": "날씨",
-    "뉴스": "뉴스", "시사": "뉴스", "속보": "뉴스", "이슈": "뉴스",
-    "경제": "경제", "주식": "경제", "금융": "경제", "환율": "경제",
-    "금리": "경제", "유가": "경제", "부동산": "경제", "관세": "경제",
-}
+def _yt_relative_to_date(text: str) -> str:
+    """Convert YouTube relative time ('13일 전', '1개월 전') to ISO date string."""
+    if not text:
+        return ""
+    now = datetime.datetime.now()
+    try:
+        # 숫자 추출
+        nums = re.findall(r"\d+", text)
+        n = int(nums[0]) if nums else 0
+        if "초" in text or "second" in text:
+            dt = now - datetime.timedelta(seconds=n)
+        elif "분" in text or "minute" in text:
+            dt = now - datetime.timedelta(minutes=n)
+        elif "시간" in text or "hour" in text:
+            dt = now - datetime.timedelta(hours=n)
+        elif "일" in text or "day" in text:
+            dt = now - datetime.timedelta(days=n)
+        elif "주" in text or "week" in text:
+            dt = now - datetime.timedelta(weeks=n)
+        elif "개월" in text or "month" in text:
+            dt = now - datetime.timedelta(days=n * 30)
+        elif "년" in text or "year" in text:
+            dt = now - datetime.timedelta(days=n * 365)
+        else:
+            return ""
+        return dt.strftime("%Y-%m-%dT%H:%M:%S")
+    except Exception:
+        return ""
 
 
 def _yt_search_rss(query: str, limit: int) -> list[dict]:
     """Fetch latest videos from YouTube channel RSS feeds matching query keywords."""
-    # 쿼리에서 매칭되는 채널 카테고리 찾기
+    _YT_CHANNELS = {
+        "뉴스": [
+            ("UCcQTRi69dsVYHN3exePtZ1A", "KBS News"),
+            ("UCF4Wxdo3inmxP-Y59wXDsFw", "MBC News"),
+            ("UCkinYTS9IHqOEwR1Ane-6UA", "SBS News"),
+            ("UChlgI3UHCOnwUGzWzbJ3H5w", "YTN"),
+            ("UCsU-I-vHLiaMfQ_5iBYLMoQ", "JTBC News"),
+        ],
+        "날씨": [
+            ("UCcQTRi69dsVYHN3exePtZ1A", "KBS News"),
+            ("UCF4Wxdo3inmxP-Y59wXDsFw", "MBC News"),
+            ("UCkinYTS9IHqOEwR1Ane-6UA", "SBS News"),
+            ("UChlgI3UHCOnwUGzWzbJ3H5w", "YTN"),
+        ],
+        "경제": [
+            ("UC0MhDBzy_MuJVMfxQf0d5lg", "한국경제TV"),
+            ("UCTkbUcCVnMmBOhBDNUBaZXg", "머니투데이방송"),
+            ("UCsU-I-vHLiaMfQ_5iBYLMoQ", "JTBC News"),
+            ("UChlgI3UHCOnwUGzWzbJ3H5w", "YTN"),
+        ],
+    }
+    _CHANNEL_KEYWORDS = {
+        "날씨": "날씨", "기상": "날씨", "예보": "날씨", "일기예보": "날씨",
+        "뉴스": "뉴스", "시사": "뉴스", "속보": "뉴스", "이슈": "뉴스",
+        "경제": "경제", "주식": "경제", "금융": "경제", "환율": "경제",
+        "금리": "경제", "유가": "경제", "부동산": "경제", "관세": "경제",
+    }
+
     matched_channels = set()
     query_lower = query.lower()
     for kw, cat in _CHANNEL_KEYWORDS.items():
         if kw in query_lower:
             for ch in _YT_CHANNELS.get(cat, []):
                 matched_channels.add(ch)
-
     if not matched_channels:
         return []
 
     items = []
     query_words = set(re.findall(r"[가-힣]{2,}", query))
-
     for channel_id, channel_name in matched_channels:
         try:
             feed_url = f"https://www.youtube.com/feeds/videos.xml?channel_id={channel_id}"
             feed = feedparser.parse(feed_url)
-            for entry in feed.entries[:5]:  # 각 채널 최신 5개
+            for entry in feed.entries[:5]:
                 title = entry.get("title", "")
-                # 쿼리 키워드와 최소 1개 매칭되는 영상만
                 title_words = set(re.findall(r"[가-힣]{2,}", title))
                 if not query_words.intersection(title_words) and len(matched_channels) > 2:
                     continue
                 vid_url = entry.get("link", "")
-                vid_id = ""
-                if "watch?v=" in vid_url:
-                    vid_id = vid_url.split("watch?v=")[-1].split("&")[0]
+                vid_id = vid_url.split("watch?v=")[-1].split("&")[0] if "watch?v=" in vid_url else ""
                 if not vid_id:
                     continue
-                # published: feedparser time struct
                 pub_str = ""
                 if entry.get("published"):
                     try:
                         from dateutil import parser as _dp
-                        pub_dt = _dp.parse(entry["published"])
-                        pub_str = pub_dt.strftime("%Y-%m-%dT%H:%M:%S")
+                        pub_str = _dp.parse(entry["published"]).strftime("%Y-%m-%dT%H:%M:%S")
                     except Exception:
                         pub_str = entry.get("published", "")[:19]
-                items.append(_yt_parse_item(
-                    vid_id, title, channel_name,
-                    pub_str, "", "", entry.get("summary", ""),
-                ))
+                items.append(_yt_parse_item(vid_id, title, channel_name, pub_str, "", "", entry.get("summary", "")))
         except Exception:
             continue
 
-    # 최신순 정렬
     items.sort(key=lambda v: v.get("published", ""), reverse=True)
-    # 중복 제거
     seen = set()
-    unique = []
-    for it in items:
-        if it["vid_id"] not in seen:
-            seen.add(it["vid_id"])
-            unique.append(it)
-    return unique[:limit]
+    return [it for it in items if not (it["vid_id"] in seen or seen.add(it["vid_id"]))][:limit]
 
 
 def _yt_search_ddg(query: str, limit: int) -> list[dict]:
@@ -732,23 +785,24 @@ def _yt_search_ddg(query: str, limit: int) -> list[dict]:
 
 @st.cache_data(ttl=900, show_spinner=False)
 def fetch_youtube_search(query: str, limit: int = 12, timelimit: str | None = None) -> list[dict]:
-    """Fetch YouTube videos: yt-dlp → YouTube RSS → DDG (3단계).
+    """Fetch YouTube videos: YouTube 페이지 파싱 → RSS → DDG (3단계).
 
     Args:
-        timelimit: "d"/"w"/"m"/None — when set, also tries YouTube RSS feeds.
+        timelimit: "d"/"w"/"m"/None — when set, YouTube search sorts by upload date.
     """
     _MIN = 4
+    sort_by_date = timelimit is not None
     domain = _detect_domain(query)
 
-    # 1차: yt-dlp (YouTube 직접 검색 — 가장 정확하고 최신)
+    # 1차: YouTube 검색 페이지 직접 파싱 (브라우저와 동일한 결과)
     try:
-        items = _yt_search_ytdlp(query, limit)
+        items = _yt_search_scrape(query, limit, sort_by_date=sort_by_date)
         if len(items) >= _MIN:
             return _filter_by_domain(items, domain, title_key="title")
     except Exception:
         pass
 
-    # 2차: YouTube 채널 RSS (실시간 페이지용 — 뉴스/날씨/경제 채널 최신 영상)
+    # 2차: YouTube 채널 RSS (뉴스/날씨/경제 채널 최신 영상)
     if timelimit:
         try:
             items = _yt_search_rss(query, limit)
