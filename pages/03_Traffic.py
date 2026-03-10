@@ -61,36 +61,45 @@ _BUS_SITE_URLS = {
 }
 
 if bus_number:
-    # 네이버 검색 — 버스 실시간 도착 정보 패널 표시
+    # 네이버 검색 — 버스 노선 정보 카드 바로 표시
     if bus_stop:
-        _q_naver = _urlparse.quote_plus(f"{bus_region} {bus_number}번 버스 {bus_stop} 도착")
+        _q_naver = _urlparse.quote_plus(f"{bus_region} {bus_number}번 버스 {bus_stop} 도착시간")
     else:
-        _q_naver = _urlparse.quote_plus(f"{bus_region} {bus_number}번 버스 실시간 위치")
-    naver_url = f"https://search.naver.com/search.naver?query={_q_naver}"
+        _q_naver = _urlparse.quote_plus(f"{bus_region} {bus_number}번 버스 노선")
+    naver_url = f"https://search.naver.com/search.naver?where=nexearch&query={_q_naver}"
 
-    # 카카오맵 — 버스 노선도 + 실시간 위치
-    _q_kakao = _urlparse.quote_plus(f"{bus_number}번 버스")
-    kakao_url = f"https://map.kakao.com/?q={_q_kakao}"
+    # 카카오맵 — link/search/ 경로 사용 시 자동 검색 실행
+    _q_kakao = _urlparse.quote(f"{bus_region} {bus_number}번 버스")
+    kakao_url = f"https://map.kakao.com/link/search/{_q_kakao}"
+
+    # 네이버 지도 — 버스 노선 검색 (자동 검색)
+    _q_nmap = _urlparse.quote_plus(f"{bus_number}번 버스")
+    naver_map_url = f"https://map.naver.com/p/search/{_q_nmap}"
 
     # 지역 버스정보 사이트
     site_url = _BUS_SITE_URLS.get(bus_region, _BUS_SITE_URLS["서울"])
 
-    sc1, sc2, sc3 = st.columns(3)
+    st.markdown(f"**🔍 {bus_region} {bus_number}번 버스 조회**")
+    sc1, sc2 = st.columns(2)
     with sc1:
         st.link_button(
-            f"🔍 네이버 버스 도착정보",
+            f"🔍 네이버에서 {bus_number}번 버스 조회",
             naver_url,
+            use_container_width=True,
+        )
+        st.link_button(
+            f"🗺️ 네이버지도 {bus_number}번 노선",
+            naver_map_url,
             use_container_width=True,
         )
     with sc2:
         st.link_button(
-            f"🗺️ 카카오맵 노선·위치",
+            f"🗺️ 카카오맵 {bus_number}번 노선·위치",
             kakao_url,
             use_container_width=True,
         )
-    with sc3:
         st.link_button(
-            f"🚌 {bus_region} 버스정보",
+            f"🚌 {bus_region} 버스정보 사이트",
             site_url,
             use_container_width=True,
         )
