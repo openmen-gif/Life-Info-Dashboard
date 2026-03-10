@@ -568,11 +568,11 @@ def _yt_search_scrape(query: str, limit: int, sort_by_date: bool = False) -> lis
     """Search YouTube by scraping search page — same results as browser.
 
     Args:
-        sort_by_date: True → sort by upload date (sp=CAI%253D)
+        sort_by_date: True → sort by upload date (sp=CAI%3D)
     """
     import urllib.parse
     # sp=CAI%3D means sort by upload date on YouTube
-    sp = "&sp=CAI%253D" if sort_by_date else ""
+    sp = "&sp=CAI%3D" if sort_by_date else ""
     url = f"https://www.youtube.com/results?search_query={urllib.parse.quote(query)}{sp}"
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -730,10 +730,11 @@ def _yt_search_rss(query: str, limit: int) -> list[dict]:
         try:
             feed_url = f"https://www.youtube.com/feeds/videos.xml?channel_id={channel_id}"
             feed = feedparser.parse(feed_url)
-            for entry in feed.entries[:5]:
+            for entry in feed.entries[:8]:
                 title = entry.get("title", "")
                 title_words = set(re.findall(r"[가-힣]{2,}", title))
-                if not query_words.intersection(title_words) and len(matched_channels) > 2:
+                # 키워드 일치 체크를 완화: 채널이 3개 초과일 때만 필터링
+                if not query_words.intersection(title_words) and len(matched_channels) > 3:
                     continue
                 vid_url = entry.get("link", "")
                 vid_id = vid_url.split("watch?v=")[-1].split("&")[0] if "watch?v=" in vid_url else ""
@@ -827,32 +828,55 @@ def fetch_youtube_search(query: str, limit: int = 12, timelimit: str | None = No
     _MIN = 4
     sort_by_date = timelimit is not None
     domain = _detect_domain(query)
+    all_items = []
 
     # 1차: YouTube 검색 페이지 직접 파싱 (브라우저와 동일한 결과)
     try:
-        items = _yt_search_scrape(query, limit, sort_by_date=sort_by_date)
-        if len(items) >= _MIN:
-            return _filter_by_domain(items, domain, title_key="title")
+        scrape_items = _yt_search_scrape(query, limit, sort_by_date=sort_by_date)
+        if scrape_items:
+            all_items.extend(scrape_items)
     except Exception:
         pass
 
-    # 2차: YouTube 채널 RSS (뉴스/날씨/경제 채널 최신 영상)
-    if timelimit:
-        try:
-            items = _yt_search_rss(query, limit)
-            if len(items) >= _MIN:
-                return _filter_by_domain(items, domain, title_key="title")
-        except Exception:
-            pass
+    # 2차: YouTube 채널 RSS (뉴스/날씨/경제 채널 최신 영상) — 항상 시도
+    try:
+        rss_items = _yt_search_rss(query, limit)
+        if rss_items:
+            # 중복 제거 후 병합
+            existing_ids = {it.get("vid_id") for it in all_items}
+            for it in rss_items:
+                if it.get("vid_id") not in existing_ids:
+                    all_items.append(it)
+                    existing_ids.add(it.get("vid_id"))
+    except Exception:
+        pass
+
+    # 충분한 결과가 있으면 반환
+    if len(all_items) >= _MIN:
+        filtered = _filter_by_domain(all_items, domain, title_key="title")
+        if sort_by_date:
+            filtered.sort(key=lambda v: v.get("published", ""), reverse=True)
+        return filtered[:limit]
 
     # 3차: DDG videos fallback
     try:
-        items = _yt_search_ddg(query, limit)
-        items = _filter_by_domain(items, domain, title_key="title")
-        if items:
-            return items
+        ddg_items = _yt_search_ddg(query, limit)
+        if ddg_items:
+            existing_ids = {it.get("vid_id") for it in all_items if it.get("vid_id")}
+            for it in ddg_items:
+                vid = it.get("vid_id")
+                if not vid or vid not in existing_ids:
+                    all_items.append(it)
+                    if vid:
+                        existing_ids.add(vid)
     except Exception:
         pass
+
+    if all_items:
+        filtered = _filter_by_domain(all_items, domain, title_key="title")
+        if sort_by_date:
+            filtered.sort(key=lambda v: v.get("published", ""), reverse=True)
+        return filtered[:limit]
 
     return []
 
