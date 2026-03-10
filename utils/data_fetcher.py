@@ -769,11 +769,39 @@ def _yt_search_rss(query: str, limit: int) -> list[dict]:
     return [it for it in items if not (it["vid_id"] in seen or seen.add(it["vid_id"]))][:limit]
 
 
-def _yt_search_ddg(query: str, limit: int, youtube_only: bool = False) -> list[dict]:
-    """DDG videos search — includes YouTube + Naver TV + Kakao etc."""
+def _yt_search_ddg(query: str, limit: int, youtube_only: bool = False,
+                    timelimit: str | None = None) -> list[dict]:
+    """DDG videos search — includes YouTube + Naver TV + Kakao etc.
+
+    Args:
+        timelimit: "d" (day), "w" (week), "m" (month), None (all time)
+    """
     from duckduckgo_search import DDGS
-    with DDGS() as ddgs:
-        results = list(ddgs.videos(query, region="kr-kr", max_results=limit + 10))
+    results = []
+    # 시간 범위를 점진적으로 넓혀가며 검색 (d → w → m → None)
+    _time_order = []
+    if timelimit == "d":
+        _time_order = ["d", "w", "m", None]
+    elif timelimit == "w":
+        _time_order = ["w", "m", None]
+    elif timelimit == "m":
+        _time_order = ["m", None]
+    else:
+        _time_order = [None]
+
+    for tl in _time_order:
+        try:
+            with DDGS() as ddgs:
+                kwargs = {"region": "kr-kr", "max_results": limit + 10}
+                if tl:
+                    kwargs["timelimit"] = tl
+                results = list(ddgs.videos(query, **kwargs))
+            if len(results) >= 3:
+                break
+        except Exception:
+            continue
+    if not results:
+        return []
     items = []
     for r in results:
         url = r.get("content", "")
@@ -866,7 +894,7 @@ def fetch_youtube_search(query: str, limit: int = 12, timelimit: str | None = No
 
     # 3차: DDG videos — 항상 시도 (다양한 플랫폼 + 최신 영상 보강)
     try:
-        _merge(_yt_search_ddg(query, limit))
+        _merge(_yt_search_ddg(query, limit, timelimit=timelimit))
     except Exception:
         pass
 
