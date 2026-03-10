@@ -275,41 +275,44 @@ def _fetch_news_local(category: str, limit: int) -> list[dict]:
         return []
 
 def _fetch_traffic_local() -> list[dict]:
-    """Fetch real-time traffic info via news search (no API key)."""
+    """Fetch real-time traffic news via DDG news search."""
     try:
         from duckduckgo_search import DDGS
         with DDGS() as ddgs:
-            results = list(ddgs.news("고속도로 교통 실시간 정체 상황", region="kr-kr", max_results=5))
+            results = list(ddgs.news("고속도로 교통 도로 상황", region="kr-kr", max_results=8))
         items = []
         for r in results:
             title = _strip_html(r.get("title", ""))
-            body = r.get("body", "")
-            route = title[:40] if title else "교통 정보"
-            status, speed, color = "정보", 0, "blue"
-            for kw, st_val, spd, clr in [
-                ("정체", "정체", 20, "red"), ("지체", "지체", 30, "orange"),
-                ("서행", "서행", 45, "orange"), ("혼잡", "혼잡", 35, "orange"),
-                ("원활", "원활", 90, "green"), ("소통", "원활", 85, "green"),
+            body = _strip_html(r.get("body", ""))
+            if not title:
+                continue
+            # 기사 내용에서 교통 상태 키워드 감지
+            text = title + " " + body
+            status, color = "정보", "blue"
+            for kw, st_val, clr in [
+                ("원활", "원활", "green"), ("소통", "원활", "green"),
+                ("서행", "서행", "orange"), ("혼잡", "혼잡", "orange"),
+                ("지체", "지체", "orange"),
+                ("정체", "정체", "red"), ("통제", "통제", "red"),
+                ("사고", "사고", "red"),
             ]:
-                if kw in title or kw in body:
-                    status, speed, color = st_val, spd, clr
+                if kw in text:
+                    status, color = st_val, clr
                     break
             items.append({
-                "route": route, "status": status, "speed_kmh": speed,
-                "color": color, "source": r.get("source", ""),
-                "link": r.get("url", ""), "published": r.get("date", ""),
+                "title": title,
+                "status": status,
+                "color": color,
+                "source": r.get("source", ""),
+                "link": r.get("url", ""),
+                "published": r.get("date", ""),
+                "snippet": body[:120] if body else "",
             })
         if items:
             return items
     except Exception:
         pass
-    return [
-        {"route": "경부고속도로 (서울→부산)", "status": "원활", "speed_kmh": 95, "color": "green"},
-        {"route": "서해안고속도로 (서울→목포)", "status": "서행", "speed_kmh": 45, "color": "orange"},
-        {"route": "영동고속도로 (서울→강릉)", "status": "정체", "speed_kmh": 20, "color": "red"},
-        {"route": "중부고속도로 (서울→대전)", "status": "원활", "speed_kmh": 88, "color": "green"},
-        {"route": "호남고속도로 (대전→광주)", "status": "원활", "speed_kmh": 100, "color": "green"},
-    ]
+    return []
 
 # ── API Calls (Backend) and Public Functions ───────────────────────────────
 
