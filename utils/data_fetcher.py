@@ -544,22 +544,7 @@ def fetch_stock_data(symbol: str, period: str = "5d") -> dict:
     return {"symbol": symbol, "ok": False}
 
 
-# ── YouTube 검색: 다중 소스 (Invidious → Piped → DDG) ─────────────────────
-_INVIDIOUS_INSTANCES = [
-    "https://vid.puffyan.us",
-    "https://invidious.fdn.fr",
-    "https://inv.nadeko.net",
-    "https://invidious.nerdvpn.de",
-    "https://invidious.jing.rocks",
-    "https://invidious.privacyredirect.com",
-]
-
-_PIPED_INSTANCES = [
-    "https://pipedapi.kavin.rocks",
-    "https://pipedapi.adminforge.de",
-    "https://api.piped.projectsegfault.com",
-]
-
+# ── YouTube 검색: yt-dlp → YouTube RSS → DDG (3단계) ─────────────────────
 
 def _yt_parse_item(vid_id: str, title: str, uploader: str, pub_str: str,
                    view_count, duration_str: str, desc: str) -> dict:
@@ -578,81 +563,147 @@ def _yt_parse_item(vid_id: str, title: str, uploader: str, pub_str: str,
     }
 
 
-def _yt_search_invidious(query: str, limit: int, sort_by: str = "upload_date") -> list[dict]:
-    """Search YouTube via Invidious API."""
-    import urllib.parse
-    params = urllib.parse.urlencode({
-        "q": query, "sort_by": sort_by, "type": "video", "region": "KR",
-    })
-    for base in _INVIDIOUS_INSTANCES:
-        try:
-            resp = requests.get(f"{base}/api/v1/search?{params}", timeout=6,
-                                headers={"User-Agent": "Mozilla/5.0"})
-            if resp.status_code != 200:
-                continue
-            data = resp.json()
-            items = []
-            for v in data:
-                if v.get("type") != "video":
+def _yt_search_ytdlp(query: str, limit: int) -> list[dict]:
+    """Search YouTube directly via yt-dlp — most reliable for latest videos."""
+    try:
+        import yt_dlp
+    except ImportError:
+        return []
+
+    search_url = f"ytsearch{limit + 5}:{query}"
+    ydl_opts = {
+        "extract_flat": True,
+        "quiet": True,
+        "no_warnings": True,
+        "skip_download": True,
+        "socket_timeout": 10,
+    }
+    items = []
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            result = ydl.extract_info(search_url, download=False)
+            entries = result.get("entries", []) if result else []
+            for e in entries:
+                if not e:
                     continue
-                vid_id = v.get("videoId", "")
-                pub_ts = v.get("published", 0)
-                pub_str = datetime.datetime.fromtimestamp(pub_ts).strftime("%Y-%m-%dT%H:%M:%S") if pub_ts else ""
-                length = v.get("lengthSeconds", 0)
-                dur_str = f"{length // 60}:{length % 60:02d}" if length else ""
-                items.append(_yt_parse_item(
-                    vid_id, v.get("title", ""), v.get("author", ""),
-                    pub_str, v.get("viewCount", ""), dur_str, v.get("description", ""),
-                ))
-                if len(items) >= limit:
-                    break
-            if items:
-                return items
-        except Exception:
-            continue
-    return []
-
-
-def _yt_search_piped(query: str, limit: int) -> list[dict]:
-    """Search YouTube via Piped API (always returns latest uploads)."""
-    import urllib.parse
-    for base in _PIPED_INSTANCES:
-        try:
-            resp = requests.get(f"{base}/search?q={urllib.parse.quote(query)}&filter=videos",
-                                timeout=6, headers={"User-Agent": "Mozilla/5.0"})
-            if resp.status_code != 200:
-                continue
-            data = resp.json()
-            result_items = data.get("items", [])
-            items = []
-            for v in result_items:
-                url = v.get("url", "")
-                vid_id = url.split("?v=")[-1] if "?v=" in url else ""
+                vid_id = e.get("id", "")
                 if not vid_id:
                     continue
-                # Piped: uploaded is relative text like "1 hour ago" or epoch ms
-                uploaded_ts = v.get("uploaded", 0)
+                upload_date = e.get("upload_date", "") or ""
                 pub_str = ""
-                if isinstance(uploaded_ts, (int, float)) and uploaded_ts > 1000000000:
-                    # milliseconds epoch
-                    pub_str = datetime.datetime.fromtimestamp(uploaded_ts / 1000).strftime("%Y-%m-%dT%H:%M:%S")
-                dur_secs = v.get("duration", 0)
-                dur_str = f"{dur_secs // 60}:{dur_secs % 60:02d}" if dur_secs else ""
+                if len(upload_date) == 8:
+                    pub_str = f"{upload_date[:4]}-{upload_date[4:6]}-{upload_date[6:]}T00:00:00"
+                dur = e.get("duration") or 0
+                dur_str = f"{int(dur) // 60}:{int(dur) % 60:02d}" if dur else ""
+                vc = e.get("view_count") or e.get("view_count_text", "") or ""
                 items.append(_yt_parse_item(
-                    vid_id, v.get("title", ""), v.get("uploaderName", ""),
-                    pub_str, v.get("views", ""), dur_str, v.get("shortDescription", ""),
+                    vid_id, e.get("title", ""), e.get("uploader", "") or e.get("channel", ""),
+                    pub_str, vc, dur_str, e.get("description", "") or "",
                 ))
                 if len(items) >= limit:
                     break
-            if items:
-                return items
+    except Exception:
+        pass
+    return items
+
+
+# ── YouTube 채널 RSS (주요 한국 뉴스/정보 채널) ────────────────────────────
+_YT_CHANNELS = {
+    # 뉴스/시사
+    "뉴스": [
+        ("UCcQTRi69dsVYHN3exePtZ1A", "KBS News"),
+        ("UCF4Wxdo3inmxP-Y59wXDsFw", "MBC News"),
+        ("UCkinYTS9IHqOEwR1Ane-6UA", "SBS News"),
+        ("UChlgI3UHCOnwUGzWzbJ3H5w", "YTN"),
+        ("UCsU-I-vHLiaMfQ_5iBYLMoQ", "JTBC News"),
+    ],
+    # 날씨
+    "날씨": [
+        ("UCcQTRi69dsVYHN3exePtZ1A", "KBS News"),
+        ("UCF4Wxdo3inmxP-Y59wXDsFw", "MBC News"),
+        ("UCkinYTS9IHqOEwR1Ane-6UA", "SBS News"),
+        ("UChlgI3UHCOnwUGzWzbJ3H5w", "YTN"),
+    ],
+    # 경제/금융/주식
+    "경제": [
+        ("UC0MhDBzy_MuJVMfxQf0d5lg", "한국경제TV"),
+        ("UCTkbUcCVnMmBOhBDNUBaZXg", "머니투데이방송"),
+        ("UCsU-I-vHLiaMfQ_5iBYLMoQ", "JTBC News"),
+        ("UChlgI3UHCOnwUGzWzbJ3H5w", "YTN"),
+    ],
+}
+
+# 키워드 → 채널 카테고리 매핑
+_CHANNEL_KEYWORDS = {
+    "날씨": "날씨", "기상": "날씨", "예보": "날씨", "일기예보": "날씨",
+    "뉴스": "뉴스", "시사": "뉴스", "속보": "뉴스", "이슈": "뉴스",
+    "경제": "경제", "주식": "경제", "금융": "경제", "환율": "경제",
+    "금리": "경제", "유가": "경제", "부동산": "경제", "관세": "경제",
+}
+
+
+def _yt_search_rss(query: str, limit: int) -> list[dict]:
+    """Fetch latest videos from YouTube channel RSS feeds matching query keywords."""
+    # 쿼리에서 매칭되는 채널 카테고리 찾기
+    matched_channels = set()
+    query_lower = query.lower()
+    for kw, cat in _CHANNEL_KEYWORDS.items():
+        if kw in query_lower:
+            for ch in _YT_CHANNELS.get(cat, []):
+                matched_channels.add(ch)
+
+    if not matched_channels:
+        return []
+
+    items = []
+    query_words = set(re.findall(r"[가-힣]{2,}", query))
+
+    for channel_id, channel_name in matched_channels:
+        try:
+            feed_url = f"https://www.youtube.com/feeds/videos.xml?channel_id={channel_id}"
+            feed = feedparser.parse(feed_url)
+            for entry in feed.entries[:5]:  # 각 채널 최신 5개
+                title = entry.get("title", "")
+                # 쿼리 키워드와 최소 1개 매칭되는 영상만
+                title_words = set(re.findall(r"[가-힣]{2,}", title))
+                if not query_words.intersection(title_words) and len(matched_channels) > 2:
+                    continue
+                vid_url = entry.get("link", "")
+                vid_id = ""
+                if "watch?v=" in vid_url:
+                    vid_id = vid_url.split("watch?v=")[-1].split("&")[0]
+                if not vid_id:
+                    continue
+                # published: feedparser time struct
+                pub_str = ""
+                if entry.get("published"):
+                    try:
+                        from dateutil import parser as _dp
+                        pub_dt = _dp.parse(entry["published"])
+                        pub_str = pub_dt.strftime("%Y-%m-%dT%H:%M:%S")
+                    except Exception:
+                        pub_str = entry.get("published", "")[:19]
+                items.append(_yt_parse_item(
+                    vid_id, title, channel_name,
+                    pub_str, "", "", entry.get("summary", ""),
+                ))
         except Exception:
             continue
-    return []
+
+    # 최신순 정렬
+    items.sort(key=lambda v: v.get("published", ""), reverse=True)
+    # 중복 제거
+    seen = set()
+    unique = []
+    for it in items:
+        if it["vid_id"] not in seen:
+            seen.add(it["vid_id"])
+            unique.append(it)
+    return unique[:limit]
 
 
 def _yt_search_ddg(query: str, limit: int) -> list[dict]:
-    """Fallback: DDG videos search — fetch extra results for better sort."""
+    """Fallback: DDG videos search."""
     from duckduckgo_search import DDGS
     with DDGS() as ddgs:
         results = list(ddgs.videos(query, region="kr-kr", max_results=limit + 10))
@@ -681,33 +732,32 @@ def _yt_search_ddg(query: str, limit: int) -> list[dict]:
 
 @st.cache_data(ttl=900, show_spinner=False)
 def fetch_youtube_search(query: str, limit: int = 12, timelimit: str | None = None) -> list[dict]:
-    """Fetch YouTube videos via 3-tier search: Invidious → Piped → DDG.
+    """Fetch YouTube videos: yt-dlp → YouTube RSS → DDG (3단계).
 
     Args:
-        timelimit: "d"/"w"/"m"/None — controls Invidious sort_by.
-                   "d"/"w"/"m" → sort by upload_date; None → sort by relevance.
+        timelimit: "d"/"w"/"m"/None — when set, also tries YouTube RSS feeds.
     """
     _MIN = 4
-    sort_by = "upload_date" if timelimit else "relevance"
     domain = _detect_domain(query)
 
-    # 1차: Invidious API
+    # 1차: yt-dlp (YouTube 직접 검색 — 가장 정확하고 최신)
     try:
-        items = _yt_search_invidious(query, limit, sort_by=sort_by)
+        items = _yt_search_ytdlp(query, limit)
         if len(items) >= _MIN:
             return _filter_by_domain(items, domain, title_key="title")
     except Exception:
         pass
 
-    # 2차: Piped API
-    try:
-        items = _yt_search_piped(query, limit)
-        if len(items) >= _MIN:
-            return _filter_by_domain(items, domain, title_key="title")
-    except Exception:
-        pass
+    # 2차: YouTube 채널 RSS (실시간 페이지용 — 뉴스/날씨/경제 채널 최신 영상)
+    if timelimit:
+        try:
+            items = _yt_search_rss(query, limit)
+            if len(items) >= _MIN:
+                return _filter_by_domain(items, domain, title_key="title")
+        except Exception:
+            pass
 
-    # 3차: DDG videos
+    # 3차: DDG videos fallback
     try:
         items = _yt_search_ddg(query, limit)
         items = _filter_by_domain(items, domain, title_key="title")

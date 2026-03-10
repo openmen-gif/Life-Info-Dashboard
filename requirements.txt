@@ -14,3 +14,4 @@ duckduckgo-search>=4.0.0
 cachetools>=5.0.0
 yfinance>=0.2.30
 lxml>=4.9.0
+yt-dlp>=2024.1.0
