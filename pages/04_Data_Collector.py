@@ -109,6 +109,8 @@ EXPERT_DEFAULTS = [
     {"name": "사업/창업", "state_key": "expert_data_사업/창업", "default_query": "스타트업 창업 지원 비즈니스 매크로 동향"},
     {"name": "운송/물류", "state_key": "expert_data_운송/물류", "default_query": "국내외 물류 해운 항공 운송 트렌드"},
     {"name": "해외 분쟁/전쟁", "state_key": "expert_data_해외 분쟁/전쟁", "default_query": "우크라이나 중동 글로벌 분쟁 전쟁 동향"},
+    {"name": "IT/테크", "state_key": "expert_data_IT/테크", "default_query": "AI 반도체 스마트폰 IT 기술 트렌드"},
+    {"name": "취업/채용", "state_key": "expert_data_취업/채용", "default_query": "채용 트렌드 취업 시장 자격증 직업 전망"},
     {"name": "유가(국제)", "state_key": None, "default_query": "WTI 브렌트 두바이유 국제 유가 동향"},
     {"name": "환율(실시간)", "state_key": None, "default_query": "달러 원화 엔화 위안화 환율 실시간 동향"},
 ]
