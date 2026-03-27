@@ -10,7 +10,7 @@ python-dateutil==2.9.0.post0
 python-docx==1.2.0
 xlsxwriter==3.2.9
 openpyxl==3.1.5
-duckduckgo-search==8.1.1
+ddgs>=8.0.0
 cachetools==5.5.2
 yfinance==1.2.0
 lxml==6.0.2

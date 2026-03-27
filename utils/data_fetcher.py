@@ -281,7 +281,7 @@ def _fetch_news_local(category: str, limit: int) -> list[dict]:
 def _fetch_traffic_local() -> list[dict]:
     """Fetch real-time traffic news via DDG news search."""
     try:
-        from duckduckgo_search import DDGS
+        from ddgs import DDGS
         with DDGS() as ddgs:
             results = list(ddgs.news("고속도로 교통 도로 상황", region="kr-kr", max_results=8))
         items = []
@@ -409,7 +409,7 @@ def _is_similar(text1: str, text2: str, threshold: float = 0.6) -> bool:
 def _fetch_news_ddg(query: str, limit: int = 10) -> list[dict]:
     """Fetch news via DuckDuckGo — provides real article snippets."""
     try:
-        from duckduckgo_search import DDGS
+        from ddgs import DDGS
         with DDGS() as ddgs:
             results = list(ddgs.news(query, region="kr-kr", max_results=limit))
         items = []
@@ -467,7 +467,7 @@ def _fetch_news_rss(query: str, limit: int = 10) -> list[dict]:
 def _fetch_web_ddg(query: str, limit: int = 10) -> list[dict]:
     """Fetch web results via DuckDuckGo — provides real snippets."""
     try:
-        from duckduckgo_search import DDGS
+        from ddgs import DDGS
         with DDGS() as ddgs:
             results = list(ddgs.text(query, region="kr-kr", max_results=limit))
         items = []
@@ -535,6 +535,7 @@ def fetch_stock_data(symbol: str, period: str = "5d") -> dict:
             import yfinance as yf
             ticker = yf.Ticker(symbol)
             hist = ticker.history(period=period)
+            hist = hist.dropna(subset=["Close"])
             if hist.empty:
                 if attempt == 0:
                     _time.sleep(0.5)
@@ -793,7 +794,7 @@ def _yt_search_ddg(query: str, limit: int, youtube_only: bool = False,
     Args:
         timelimit: "d" (day), "w" (week), "m" (month), None (all time)
     """
-    from duckduckgo_search import DDGS
+    from ddgs import DDGS
     results = []
     # 시간 범위를 점진적으로 넓혀가며 검색 (d → w → m → None)
     _time_order = []
