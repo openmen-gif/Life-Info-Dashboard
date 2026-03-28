@@ -18,7 +18,7 @@ ENV STREAMLIT_SERVER_PORT=7860
 ENV STREAMLIT_SERVER_ADDRESS=0.0.0.0
 ENV STREAMLIT_SERVER_HEADLESS=true
 ENV LIFE_MODE=standalone
-# Build trigger: 2026-03-09T05:00 (sub-topics + news trends)
+# Build trigger: 2026-03-28T01:00 (fix NaN stock + ddgs migration)
 
 CMD ["streamlit", "run", "Dashboard.py", \
      "--server.port=7860", \
