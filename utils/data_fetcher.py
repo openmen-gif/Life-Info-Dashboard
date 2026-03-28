@@ -536,6 +536,10 @@ def fetch_stock_data(symbol: str, period: str = "5d") -> dict:
             ticker = yf.Ticker(symbol)
             hist = ticker.history(period=period)
             hist = hist.dropna(subset=["Close"])
+            # NaN 잔여 컬럼도 정리
+            for col in ["High", "Low", "Volume"]:
+                if col in hist.columns:
+                    hist[col] = hist[col].fillna(0)
             if hist.empty:
                 if attempt == 0:
                     _time.sleep(0.5)
