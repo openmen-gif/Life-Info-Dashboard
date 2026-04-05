@@ -1,0 +1,65 @@
+# -*- coding: utf-8 -*-
+import streamlit as st
+from utils.css_loader import apply_custom_css
+from utils.data_fetcher import fetch_news, NEWS_FEEDS
+from utils.report_downloader import render_download_buttons
+
+apply_custom_css()
+
+st.title("📰 뉴스")
+st.markdown("---")
+
+# ── Category tabs ────────────────────────────────────────────────────────
+categories = list(NEWS_FEEDS.keys())
+tabs = st.tabs(categories)
+
+for tab, cat in zip(tabs, categories):
+    with tab:
+        limit = st.slider(f"표시 개수", 5, 30, 15, key=f"news_limit_{cat}")
+        news = fetch_news(cat, limit=limit)
+
+        if not news:
+            st.info(f"{cat} 뉴스를 불러올 수 없습니다.")
+            continue
+
+        for i, item in enumerate(news):
+            col1, col2 = st.columns([5, 1])
+            with col1:
+                st.markdown(f"**{i+1}.** [{item['title']}]({item['link']})")
+                meta = []
+                if item.get("source"):
+                    meta.append(item["source"])
+                if item.get("published"):
+                    meta.append(item["published"])
+                if meta:
+                    st.caption(" | ".join(meta))
+            with col2:
+                st.link_button("읽기", item["link"], use_container_width=True)
+
+# ── 관련 영상 ─────────────────────────────────────────────────────
+st.markdown("---")
+import datetime as _dt
+_today_n = _dt.datetime.now().strftime("%Y년 %m월 %d일")
+st.markdown(f"## 🎬 {_today_n} 최신 뉴스 영상")
+from utils.expert_template import render_youtube_section
+_yt_news = render_youtube_section("오늘 뉴스 시사 이슈 분석 속보", sort="latest")
+
+# ── 보고서 다운로드 ────────────────────────────────────────────────────────
+st.markdown("---")
+# 캐시된 뉴스를 재활용하여 다운로드 컨텍스트 생성 (중복 fetch 제거)
+all_news_items = []
+cat_counts = []
+for cat in categories:
+    cat_news = fetch_news(cat, limit=10)
+    cat_counts.append({"카테고리": cat, "기사수": len(cat_news or [])})
+    if cat_news:
+        all_news_items.extend(cat_news[:5])
+
+news_context = {
+    "query": "종합 뉴스 리포트",
+    "news": all_news_items,
+    "web": [],
+    "youtube": _yt_news,
+    "df": cat_counts,
+}
+render_download_buttons(context=news_context)
