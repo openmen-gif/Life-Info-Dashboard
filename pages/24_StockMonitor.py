@@ -9,7 +9,7 @@ import streamlit as st
 import datetime
 import pandas as pd
 from utils.css_loader import apply_custom_css
-from utils.data_fetcher import fetch_stock_data, fetch_news_search
+from utils.data_fetcher import fetch_stock_data, fetch_news_search, fetch_youtube_search
 from utils.report_downloader import render_download_buttons
 
 apply_custom_css()
@@ -53,6 +53,7 @@ st.markdown("---")
 if st.button("🔄 데이터 갱신", type="primary"):
     fetch_stock_data.clear()
     fetch_news_search.clear()
+    fetch_youtube_search.clear()
     st.rerun()
 
 st.caption(f"마지막 갱신: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')} (5분 자동 캐시)")

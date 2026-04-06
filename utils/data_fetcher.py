@@ -319,7 +319,7 @@ def _fetch_traffic_local() -> list[dict]:
                 "snippet": body[:120] if body else "",
             })
         if items:
-            return items
+            return _deduplicate_news(items, title_key="title")
     except Exception:
         pass
     return []

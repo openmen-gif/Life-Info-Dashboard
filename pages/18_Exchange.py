@@ -22,6 +22,8 @@ with col_r:
         fetch_exchange_rates.clear()
         fetch_stock_data.clear()
         fetch_news_search.clear()
+        fetch_web_search.clear()
+        fetch_youtube_search.clear()
         st.rerun()
 with col_t:
     st.caption(f"마지막 갱신: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')} (5분 자동 캐시)")

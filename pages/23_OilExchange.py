@@ -36,7 +36,10 @@ st.title("⛽ 유가 & 환율 실시간 모니터링")
 st.markdown("---")
 
 if st.button("🔄 데이터 갱신", type="primary"):
-    st.cache_data.clear()
+    fetch_exchange_rates.clear()
+    fetch_stock_data.clear()
+    fetch_news_search.clear()
+    fetch_youtube_search.clear()
     st.rerun()
 
 st.caption(f"마지막 갱신: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')} (5분 자동 캐시)")

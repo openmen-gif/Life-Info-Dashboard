@@ -164,6 +164,7 @@ def _collect_single_expert(expert: dict, session_data: dict | None) -> dict:
 
 
 if st.button("전 분야 마스터 리포트 생성 시작", type="primary", use_container_width=True):
+    st.session_state.pop("master_report_data", None)  # 이전 결과 초기화
     from concurrent.futures import ThreadPoolExecutor, as_completed
 
     progress_bar = st.progress(0)
