@@ -111,6 +111,40 @@ _PLATFORM_ICONS = {
 }
 
 
+def _render_paginated_videos(videos: list[dict], page_key: str, per_page: int = 4):
+    """Shared helper: render paginated video grid with navigation."""
+    import math
+    total = len(videos)
+    total_pages = max(1, math.ceil(total / per_page))
+    if page_key not in st.session_state:
+        st.session_state[page_key] = 0
+    cp = st.session_state[page_key]
+    s, e = cp * per_page, min((cp + 1) * per_page, total)
+
+    cols = st.columns(2)
+    for idx, v in enumerate(videos[s:e]):
+        with cols[idx % 2]:
+            _render_video_card(v, show_desc=True)
+
+    if total_pages > 1:
+        nav_cols = st.columns(total_pages + 2)
+        with nav_cols[0]:
+            if st.button("◀", key=f"{page_key}_prev", disabled=(cp == 0)):
+                st.session_state[page_key] = cp - 1
+                st.rerun()
+        for p in range(total_pages):
+            with nav_cols[p + 1]:
+                label = f"**[{p+1}]**" if p == cp else f"{p+1}"
+                if st.button(label, key=f"{page_key}_p{p}"):
+                    st.session_state[page_key] = p
+                    st.rerun()
+        with nav_cols[total_pages + 1]:
+            if st.button("▶", key=f"{page_key}_next", disabled=(cp >= total_pages - 1)):
+                st.session_state[page_key] = cp + 1
+                st.rerun()
+        st.caption(f"페이지 {cp + 1} / {total_pages} (총 {total}건)")
+
+
 def _render_video_card(v: dict, show_desc: bool = False):
     """Render a single video card (YouTube + other platforms)."""
     thumbnail = v.get("thumbnail", "")
@@ -190,42 +224,9 @@ def render_youtube_section(query: str, limit: int = 12, per_page: int = 4,
     channels = set(v.get("uploader", "") for v in videos_sorted if v.get("uploader"))
     mc3.metric("채널 수", f"{len(channels)}개")
 
-    # Pagination
-    import math
-    total_pages = max(1, math.ceil(total / per_page))
+    # Pagination (공통 헬퍼 사용)
     page_key = f"yt_page_{query[:20]}"
-    if page_key not in st.session_state:
-        st.session_state[page_key] = 0
-
-    current_page = st.session_state[page_key]
-    start = current_page * per_page
-    end = min(start + per_page, total)
-    page_videos = videos_sorted[start:end]
-
-    # Render current page videos
-    cols = st.columns(2)
-    for idx, v in enumerate(page_videos):
-        with cols[idx % 2]:
-            _render_video_card(v, show_desc=True)
-
-    # Page navigation buttons
-    if total_pages > 1:
-        nav_cols = st.columns(total_pages + 2)
-        with nav_cols[0]:
-            if st.button("◀", key=f"{page_key}_prev", disabled=(current_page == 0)):
-                st.session_state[page_key] = current_page - 1
-                st.rerun()
-        for p in range(total_pages):
-            with nav_cols[p + 1]:
-                label = f"**[{p+1}]**" if p == current_page else f"{p+1}"
-                if st.button(label, key=f"{page_key}_p{p}"):
-                    st.session_state[page_key] = p
-                    st.rerun()
-        with nav_cols[total_pages + 1]:
-            if st.button("▶", key=f"{page_key}_next", disabled=(current_page >= total_pages - 1)):
-                st.session_state[page_key] = current_page + 1
-                st.rerun()
-        st.caption(f"페이지 {current_page + 1} / {total_pages} (총 {total}건)")
+    _render_paginated_videos(videos_sorted, page_key, per_page)
 
     return videos_sorted
 
@@ -426,39 +427,11 @@ def render_expert_page(
         st.markdown("---")
         st.markdown(f"### 🎬 관련 영상")
         if data.get("youtube"):
-            import math as _math
             if youtube_sort == "latest":
                 videos = sorted(data["youtube"], key=lambda v: v.get("published", ""), reverse=True)
             else:
                 videos = sorted(data["youtube"], key=lambda v: _parse_view_count(v.get("view_count")), reverse=True)
-            _per_page = 4
-            _total_pages = max(1, _math.ceil(len(videos) / _per_page))
-            _pk = f"yt_ep_{title}"
-            if _pk not in st.session_state:
-                st.session_state[_pk] = 0
-            _cp = st.session_state[_pk]
-            _s, _e = _cp * _per_page, min((_cp + 1) * _per_page, len(videos))
-            cols = st.columns(2)
-            for idx, v in enumerate(videos[_s:_e]):
-                with cols[idx % 2]:
-                    _render_video_card(v, show_desc=True)
-            if _total_pages > 1:
-                nav_cols = st.columns(_total_pages + 2)
-                with nav_cols[0]:
-                    if st.button("◀", key=f"{_pk}_prev", disabled=(_cp == 0)):
-                        st.session_state[_pk] = _cp - 1
-                        st.rerun()
-                for _p in range(_total_pages):
-                    with nav_cols[_p + 1]:
-                        _lbl = f"**[{_p+1}]**" if _p == _cp else f"{_p+1}"
-                        if st.button(_lbl, key=f"{_pk}_p{_p}"):
-                            st.session_state[_pk] = _p
-                            st.rerun()
-                with nav_cols[_total_pages + 1]:
-                    if st.button("▶", key=f"{_pk}_next", disabled=(_cp >= _total_pages - 1)):
-                        st.session_state[_pk] = _cp + 1
-                        st.rerun()
-                st.caption(f"페이지 {_cp + 1} / {_total_pages} (총 {len(videos)}건)")
+            _render_paginated_videos(videos, f"yt_ep_{title}")
         else:
             st.info("관련 영상을 찾지 못했습니다.")
 

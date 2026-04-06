@@ -308,38 +308,10 @@ with tab_expert:
 
         st.markdown("---")
         st.markdown("### 🎬 관련 영상")
-        from utils.expert_template import _render_video_card
-        import math as _math
+        from utils.expert_template import _render_paginated_videos
         if data.get("youtube"):
             videos = sorted(data["youtube"], key=lambda v: v.get("published", ""), reverse=True)
-            _per_page = 4
-            _total_pages = max(1, _math.ceil(len(videos) / _per_page))
-            _pk = "yt_stock_expert"
-            if _pk not in st.session_state:
-                st.session_state[_pk] = 0
-            _cp = st.session_state[_pk]
-            _s, _e = _cp * _per_page, min((_cp + 1) * _per_page, len(videos))
-            cols = st.columns(2)
-            for idx, v in enumerate(videos[_s:_e]):
-                with cols[idx % 2]:
-                    _render_video_card(v, show_desc=True)
-            if _total_pages > 1:
-                nav_cols = st.columns(_total_pages + 2)
-                with nav_cols[0]:
-                    if st.button("◀", key=f"{_pk}_prev", disabled=(_cp == 0)):
-                        st.session_state[_pk] = _cp - 1
-                        st.rerun()
-                for _p in range(_total_pages):
-                    with nav_cols[_p + 1]:
-                        _lbl = f"**[{_p+1}]**" if _p == _cp else f"{_p+1}"
-                        if st.button(_lbl, key=f"{_pk}_p{_p}"):
-                            st.session_state[_pk] = _p
-                            st.rerun()
-                with nav_cols[_total_pages + 1]:
-                    if st.button("▶", key=f"{_pk}_next", disabled=(_cp >= _total_pages - 1)):
-                        st.session_state[_pk] = _cp + 1
-                        st.rerun()
-                st.caption(f"페이지 {_cp + 1} / {_total_pages} (총 {len(videos)}건)")
+            _render_paginated_videos(videos, "yt_stock_expert")
         else:
             st.info("관련 영상을 찾지 못했습니다.")
 
