@@ -8,6 +8,12 @@ from typing import Optional
 import streamlit as st
 from utils.config import IS_API_MODE, API_BASE_URL
 
+# DDGS를 모듈 레벨에서 한 번만 import (lazy: 실패 시 None)
+try:
+    from ddgs import DDGS as _DDGS
+except ImportError:
+    _DDGS = None  # type: ignore
+
 # ── 분야별 제외 키워드 (교차 오염 방지) ──────────────────────────────────────
 DOMAIN_EXCLUDE_KEYWORDS = {
     "부동산": ["여행", "관광", "항공권", "호캉스", "맛집", "주식", "코스피", "나스닥", "증시"],
@@ -64,32 +70,26 @@ def _filter_by_domain(items: list[dict], domain: str, title_key: str = "title") 
 
 
 def _deduplicate_news(items: list[dict], title_key: str = "title") -> list[dict]:
-    """제목 유사도 기반 중복 기사 제거. 정규화 후 80% 이상 겹치면 중복 처리."""
+    """제목 기반 중복 기사 제거. 정규화된 키워드 frozenset 해시로 O(n) 처리."""
     if not items:
         return items
 
-    def _normalize(text: str) -> set:
+    def _normalize_key(text: str) -> frozenset:
         text = re.sub(r"[^\w\s]", "", text)
-        return set(text.split())
+        words = sorted(text.split())
+        # 주요 키워드(상위 5개)만 비교하여 유사 제목 그룹핑
+        return frozenset(words[:5]) if len(words) > 5 else frozenset(words)
 
-    seen: list[set] = []
+    seen: set[frozenset] = set()
     unique: list[dict] = []
     for item in items:
         title = item.get(title_key, "")
-        words = _normalize(title)
-        if not words:
+        key = _normalize_key(title)
+        if not key:
             unique.append(item)
             continue
-        is_dup = False
-        for prev_words in seen:
-            if not prev_words:
-                continue
-            overlap = len(words & prev_words) / min(len(words), len(prev_words))
-            if overlap >= 0.8:
-                is_dup = True
-                break
-        if not is_dup:
-            seen.append(words)
+        if key not in seen:
+            seen.add(key)
             unique.append(item)
     return unique
 
@@ -281,8 +281,9 @@ def _fetch_news_local(category: str, limit: int) -> list[dict]:
 def _fetch_traffic_local() -> list[dict]:
     """Fetch real-time traffic news via DDG news search."""
     try:
-        from ddgs import DDGS
-        with DDGS() as ddgs:
+        if not _DDGS:
+            return []
+        with _DDGS() as ddgs:
             results = list(ddgs.news("고속도로 교통 도로 상황", region="kr-kr", max_results=8))
         items = []
         for r in results:
@@ -409,8 +410,9 @@ def _is_similar(text1: str, text2: str, threshold: float = 0.6) -> bool:
 def _fetch_news_ddg(query: str, limit: int = 10) -> list[dict]:
     """Fetch news via DuckDuckGo — provides real article snippets."""
     try:
-        from ddgs import DDGS
-        with DDGS() as ddgs:
+        if not _DDGS:
+            return []
+        with _DDGS() as ddgs:
             results = list(ddgs.news(query, region="kr-kr", max_results=limit))
         items = []
         for r in results:
@@ -467,8 +469,9 @@ def _fetch_news_rss(query: str, limit: int = 10) -> list[dict]:
 def _fetch_web_ddg(query: str, limit: int = 10) -> list[dict]:
     """Fetch web results via DuckDuckGo — provides real snippets."""
     try:
-        from ddgs import DDGS
-        with DDGS() as ddgs:
+        if not _DDGS:
+            return []
+        with _DDGS() as ddgs:
             results = list(ddgs.text(query, region="kr-kr", max_results=limit))
         items = []
         for r in results:
@@ -799,7 +802,8 @@ def _yt_search_ddg(query: str, limit: int, youtube_only: bool = False,
     Args:
         timelimit: "d" (day), "w" (week), "m" (month), None (all time)
     """
-    from ddgs import DDGS
+    if not _DDGS:
+        return []
     results = []
     # 시간 범위를 점진적으로 넓혀가며 검색 (d → w → m → None)
     _time_order = []
@@ -814,7 +818,7 @@ def _yt_search_ddg(query: str, limit: int, youtube_only: bool = False,
 
     for tl in _time_order:
         try:
-            with DDGS() as ddgs:
+            with _DDGS() as ddgs:
                 kwargs = {"region": "kr-kr", "max_results": limit + 10}
                 if tl:
                     kwargs["timelimit"] = tl
