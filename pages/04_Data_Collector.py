@@ -187,7 +187,14 @@ if st.button("전 분야 마스터 리포트 생성 시작", type="primary", use
         done_count = 0
         for future in as_completed(futures):
             idx = futures[future]
-            master_context_list[idx] = future.result()
+            try:
+                master_context_list[idx] = future.result()
+            except Exception:
+                master_context_list[idx] = {
+                    "expert": EXPERT_DEFAULTS[idx]["name"],
+                    "query": EXPERT_DEFAULTS[idx]["default_query"],
+                    "news": [], "web": [], "df": [],
+                }
             done_count += 1
             status_text.text(f"수집 완료: [{EXPERT_DEFAULTS[idx]['name']}] ({done_count}/{len(EXPERT_DEFAULTS)})")
             progress_bar.progress(done_count / len(EXPERT_DEFAULTS))

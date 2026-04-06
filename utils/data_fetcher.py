@@ -570,6 +570,9 @@ def fetch_stock_data(symbol: str, period: str = "5d") -> dict:
                     "Close": round(float(row["Close"]), 2),
                     "Volume": int(vol) if vol else 0,
                 })
+            high_val = round(float(hist["High"].max()), 2) if "High" in hist.columns and not hist["High"].isna().all() else last_close
+            low_val = round(float(hist["Low"].min()), 2) if "Low" in hist.columns and not hist["Low"].isna().all() else last_close
+            last_vol = hist["Volume"].iloc[-1] if "Volume" in hist.columns else 0
             return {
                 "name": symbol,
                 "symbol": symbol,
@@ -577,9 +580,9 @@ def fetch_stock_data(symbol: str, period: str = "5d") -> dict:
                 "prev_close": round(prev_close, 2),
                 "change": round(change, 2),
                 "change_pct": round(change_pct, 2),
-                "high": round(float(hist["High"].max()), 2),
-                "low": round(float(hist["Low"].min()), 2),
-                "volume": int(hist["Volume"].iloc[-1]) if hist["Volume"].iloc[-1] else 0,
+                "high": high_val,
+                "low": low_val,
+                "volume": int(last_vol) if last_vol else 0,
                 "history": hist_records,
                 "updated": datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
                 "ok": True,
