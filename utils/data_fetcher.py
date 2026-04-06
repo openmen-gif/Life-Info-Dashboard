@@ -19,6 +19,10 @@ try:
 except ImportError:
     _yf = None  # type: ignore
 
+# ── 사전 컴파일 정규식 ────────────────────────────────────────────────────────
+_PUNCT_RE = re.compile(r"[^\w\s]")
+_SPACE_RE = re.compile(r"\s+")
+
 # ── 분야별 제외 키워드 (교차 오염 방지) ──────────────────────────────────────
 DOMAIN_EXCLUDE_KEYWORDS = {
     "부동산": ["여행", "관광", "항공권", "호캉스", "맛집", "주식", "코스피", "나스닥", "증시"],
@@ -37,24 +41,25 @@ DOMAIN_EXCLUDE_KEYWORDS = {
 }
 
 
+_DOMAIN_KEYWORDS = {
+    "부동산": ["부동산", "아파트", "청약", "전세", "매매", "리츠"],
+    "주식": ["주식", "코스피", "코스닥", "증시", "나스닥", "S&P", "시황"],
+    "주식 분석": ["주식", "코스피", "코스닥", "증시", "나스닥", "S&P", "시황"],
+    "여행": ["여행", "관광", "호캉스", "항공권", "명소"],
+    "생활금융": ["재테크", "저축", "금리", "생활금융"],
+    "식생활": ["외식", "맛집", "요리", "식생활"],
+    "건강": ["헬스케어", "메디컬", "건강"],
+    "교육": ["에듀테크", "입시", "교육"],
+    "생활법률": ["법률", "판례", "대법원"],
+    "환율": ["환율", "달러", "엔화"],
+    "관세": ["관세", "수출입", "무역"],
+    "IT": ["AI", "반도체", "스마트폰", "IT", "클라우드", "사이버보안"],
+    "취업": ["채용", "취업", "자격증", "구인", "이직", "면접"],
+}
+
 def _detect_domain(query: str) -> str:
     """검색 쿼리에서 도메인을 감지하여 제외 키워드 매핑."""
-    domain_keywords = {
-        "부동산": ["부동산", "아파트", "청약", "전세", "매매", "리츠"],
-        "주식": ["주식", "코스피", "코스닥", "증시", "나스닥", "S&P", "시황"],
-        "주식 분석": ["주식", "코스피", "코스닥", "증시", "나스닥", "S&P", "시황"],
-        "여행": ["여행", "관광", "호캉스", "항공권", "명소"],
-        "생활금융": ["재테크", "저축", "금리", "생활금융"],
-        "식생활": ["외식", "맛집", "요리", "식생활"],
-        "건강": ["헬스케어", "메디컬", "건강"],
-        "교육": ["에듀테크", "입시", "교육"],
-        "생활법률": ["법률", "판례", "대법원"],
-        "환율": ["환율", "달러", "엔화"],
-        "관세": ["관세", "수출입", "무역"],
-        "IT": ["AI", "반도체", "스마트폰", "IT", "클라우드", "사이버보안"],
-        "취업": ["채용", "취업", "자격증", "구인", "이직", "면접"],
-    }
-    for domain, keywords in domain_keywords.items():
+    for domain, keywords in _DOMAIN_KEYWORDS.items():
         for kw in keywords:
             if kw in query:
                 return domain
@@ -80,7 +85,7 @@ def _deduplicate_news(items: list[dict], title_key: str = "title") -> list[dict]
         return items
 
     def _normalize_key(text: str) -> frozenset:
-        text = re.sub(r"[^\w\s]", "", text)
+        text = _PUNCT_RE.sub("", text)
         words = sorted(text.split())
         # 주요 키워드(상위 5개)만 비교하여 유사 제목 그룹핑
         return frozenset(words[:5]) if len(words) > 5 else frozenset(words)
@@ -538,7 +543,6 @@ def fetch_stock_data(symbol: str, period: str = "5d") -> dict:
     """Fetch stock/index data via yfinance (free, no key).
     Returns: {name, symbol, price, change, change_pct, history, ok}
     """
-    import time as _time
     if not _yf:
         return {"symbol": symbol, "ok": False, "error": "yfinance not installed"}
     for attempt in range(2):
@@ -552,8 +556,7 @@ def fetch_stock_data(symbol: str, period: str = "5d") -> dict:
                     hist[col] = hist[col].fillna(0)
             if hist.empty:
                 if attempt == 0:
-                    _time.sleep(0.5)
-                    continue
+                    continue  # sleep 제거 — 즉시 재시도
                 return {"symbol": symbol, "ok": False}
             last_close = float(hist["Close"].iloc[-1])
             prev_close = float(hist["Close"].iloc[-2]) if len(hist) >= 2 else last_close
@@ -583,8 +586,7 @@ def fetch_stock_data(symbol: str, period: str = "5d") -> dict:
             }
         except Exception as e:
             if attempt == 0:
-                _time.sleep(0.5)
-                continue
+                continue  # sleep 제거 — 즉시 재시도
             return {"symbol": symbol, "ok": False, "error": str(e)}
     return {"symbol": symbol, "ok": False}
 
