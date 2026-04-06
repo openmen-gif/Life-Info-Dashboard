@@ -16,7 +16,8 @@ st.markdown("---")
 col_r, col_t = st.columns([1, 3])
 with col_r:
     if st.button("🔄 데이터 갱신", type="primary"):
-        st.cache_data.clear()
+        fetch_stock_data.clear()
+        fetch_news_search.clear()
         st.rerun()
 with col_t:
     st.caption(f"마지막 갱신: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')} (5분 자동 캐시)")

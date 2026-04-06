@@ -51,10 +51,15 @@ st.title("📊 주식 실시간 모니터링")
 st.markdown("---")
 
 if st.button("🔄 데이터 갱신", type="primary"):
-    st.cache_data.clear()
+    fetch_stock_data.clear()
+    fetch_news_search.clear()
     st.rerun()
 
 st.caption(f"마지막 갱신: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')} (5분 자동 캐시)")
+
+# ── 지수 데이터 1회 fetch → 전체 재활용 ──────────────────────────────────
+_all_indices = {**KR_INDICES, **US_INDICES}
+_idx_data_5d = {symbol: fetch_stock_data(symbol, period="5d") for symbol in _all_indices}
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -69,13 +74,12 @@ def _metric_color(val: float) -> str:
 
 
 def _render_index_row(indices: dict, flag: str):
-    """지수 메트릭 카드를 한 줄로 표시."""
+    """지수 메트릭 카드를 한 줄로 표시 (사전 fetch된 데이터 재활용)."""
     cols = st.columns(len(indices))
     for col, (symbol, name) in zip(cols, indices.items()):
-        d = fetch_stock_data(symbol, period="5d")
+        d = _idx_data_5d.get(symbol, {})
         with col:
             if d.get("ok"):
-                color = _metric_color(d["change"])
                 delta_str = f"{d['change']:+,.2f} ({d['change_pct']:+.2f}%)"
                 st.metric(f"{flag} {name}", f"{d['price']:,.2f}", delta=delta_str)
             else:
@@ -259,13 +263,12 @@ for kr_sym, kr_name, us_sym, us_name in compare_pairs:
             st.caption("※ 시작일 = 100 기준 정규화 비교")
     st.markdown("---")
 
-# 종합 비교 테이블
+# 종합 비교 테이블 (사전 fetch 데이터 재활용)
 st.markdown("### 📋 주요 지수 종합")
-all_idx = {**KR_INDICES, **US_INDICES}
 comp_rows = []
-for symbol, name in all_idx.items():
+for symbol, name in _all_indices.items():
     flag = "🇰🇷" if symbol.startswith("^K") else "🇺🇸"
-    d = fetch_stock_data(symbol, period="5d")
+    d = _idx_data_5d.get(symbol, {})
     if d.get("ok"):
         comp_rows.append({
             "지수": f"{flag} {name}",
@@ -303,15 +306,15 @@ _yt_stock = render_youtube_section("주식 시황 분석 코스피 나스닥", s
 # ── 보고서 다운로드 ────────────────────────────────────────────────────────
 st.markdown("---")
 stock_dl_data = []
-for indices, flag in [(KR_INDICES, "🇰🇷"), (US_INDICES, "🇺🇸")]:
-    for symbol, name in indices.items():
-        d = fetch_stock_data(symbol, period="5d")
-        if d.get("ok"):
-            stock_dl_data.append({
-                "지수": f"{flag} {name}", "현재가": d["price"],
-                "전일비": d["change"], "등락률": f"{d['change_pct']}%",
-                "고가": d["high"], "저가": d["low"],
-            })
+for symbol, name in _all_indices.items():
+    flag = "🇰🇷" if symbol.startswith("^K") else "🇺🇸"
+    d = _idx_data_5d.get(symbol, {})
+    if d.get("ok"):
+        stock_dl_data.append({
+            "지수": f"{flag} {name}", "현재가": d["price"],
+            "전일비": d["change"], "등락률": f"{d['change_pct']}%",
+            "고가": d["high"], "저가": d["low"],
+        })
 
 stock_monitor_context = {
     "query": "국내외 주식 실시간 모니터링",

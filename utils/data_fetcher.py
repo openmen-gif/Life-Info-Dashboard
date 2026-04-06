@@ -8,11 +8,16 @@ from typing import Optional
 import streamlit as st
 from utils.config import IS_API_MODE, API_BASE_URL
 
-# DDGS를 모듈 레벨에서 한 번만 import (lazy: 실패 시 None)
+# 외부 의존성 모듈 레벨 import (lazy: 실패 시 None)
 try:
     from ddgs import DDGS as _DDGS
 except ImportError:
     _DDGS = None  # type: ignore
+
+try:
+    import yfinance as _yf
+except ImportError:
+    _yf = None  # type: ignore
 
 # ── 분야별 제외 키워드 (교차 오염 방지) ──────────────────────────────────────
 DOMAIN_EXCLUDE_KEYWORDS = {
@@ -534,10 +539,11 @@ def fetch_stock_data(symbol: str, period: str = "5d") -> dict:
     Returns: {name, symbol, price, change, change_pct, history, ok}
     """
     import time as _time
+    if not _yf:
+        return {"symbol": symbol, "ok": False, "error": "yfinance not installed"}
     for attempt in range(2):
         try:
-            import yfinance as yf
-            ticker = yf.Ticker(symbol)
+            ticker = _yf.Ticker(symbol)
             hist = ticker.history(period=period)
             hist = hist.dropna(subset=["Close"])
             # NaN 잔여 컬럼도 정리
