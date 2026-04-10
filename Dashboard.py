@@ -40,6 +40,12 @@ pages = {
         st.Page("pages/23_OilExchange.py", title="유가 & 환율 모니터", icon="⛽"),
         st.Page("pages/25_Tech.py", title="IT/테크", icon="💻"),
         st.Page("pages/26_Jobs.py", title="취업/채용", icon="💼"),
+        st.Page("pages/27_Sports.py", title="스포츠", icon="⚽"),
+        st.Page("pages/28_Entertainment.py", title="연예/엔터", icon="🎬"),
+        st.Page("pages/29_Car.py", title="자동차", icon="🚗"),
+        st.Page("pages/30_Insurance.py", title="보험/연금", icon="🛡️"),
+        st.Page("pages/31_Environment.py", title="환경/에너지", icon="🌱"),
+        st.Page("pages/32_Crypto.py", title="암호화폐", icon="🪙"),
     ],
     "도구": [
         st.Page("pages/04_Data_Collector.py", title="데이터 수집", icon="📊"),
