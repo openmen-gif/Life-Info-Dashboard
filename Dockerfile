@@ -13,11 +13,10 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # 소스 코드 (변경 빈도 높음 → 마지막 레이어, 세분화)
+COPY .streamlit/ .streamlit/
 COPY utils/ utils/
 COPY pages/ pages/
-COPY skill_md/ skill_md/
 COPY Dashboard.py .
-COPY .gitignore .
 
 EXPOSE 7860
 
