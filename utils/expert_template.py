@@ -391,10 +391,10 @@ def render_expert_page(
 
             # Determine best ticker for real trend data
             _proxy_map = {
-                "주식": "^KS11", "코스피": "^KS11", "코스닥": "^KQ11",
-                "환율": "KRW=X", "관세": "^KS11", "무역": "^KS11",
-                "금융": "^KS11", "부동산": "^KS11", "유가": "CL=F",
-                "운송": "BZ=F", "사업": "^KS11",
+                "주식": "069500.KS", "코스피": "069500.KS", "코스닥": "229200.KS",
+                "환율": "KRW=X", "관세": "069500.KS", "무역": "069500.KS",
+                "금융": "069500.KS", "부동산": "069500.KS", "유가": "CL=F",
+                "운송": "BZ=F", "사업": "069500.KS",
             }
 
             target_sym = None
@@ -406,7 +406,7 @@ def render_expert_page(
                         target_sym = sym
                         break
                 if not target_sym:
-                    target_sym = "^KS11"  # Default: KOSPI
+                    target_sym = "069500.KS"  # Default: KOSPI
 
             td = _fsd(target_sym, period="7d")
             if td.get("ok") and td.get("history"):
@@ -415,7 +415,7 @@ def render_expert_page(
                 values = [r["Close"] for r in hist]
             else:
                 # Fallback: use 5d data
-                td2 = _fsd("^KS11", period="5d")
+                td2 = _fsd("069500.KS", period="5d")
                 if td2.get("ok") and td2.get("history"):
                     hist = td2["history"]
                     dates = [r.get("Date", "") for r in hist]

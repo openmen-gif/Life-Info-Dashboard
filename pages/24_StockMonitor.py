@@ -16,8 +16,8 @@ apply_custom_css()
 
 # ── 지수 & 종목 정의 ─────────────────────────────────────────────────────
 KR_INDICES = {
-    "^KS11": "KOSPI",
-    "^KQ11": "KOSDAQ",
+    "069500.KS": "KOSPI",
+    "229200.KS": "KOSDAQ",
 }
 US_INDICES = {
     "^GSPC": "S&P 500",
@@ -222,8 +222,8 @@ st.markdown("## 📊 국장 vs 미장 비교")
 cmp_period = st.selectbox("비교 기간", ["5d", "1mo", "3mo", "6mo", "1y"], index=1, key="cmp_mon_period")
 
 compare_pairs = [
-    ("^KS11", "KOSPI", "^GSPC", "S&P 500"),
-    ("^KQ11", "KOSDAQ", "^IXIC", "NASDAQ"),
+    ("069500.KS", "KOSPI", "^GSPC", "S&P 500"),
+    ("229200.KS", "KOSDAQ", "^IXIC", "NASDAQ"),
 ]
 
 for kr_sym, kr_name, us_sym, us_name in compare_pairs:

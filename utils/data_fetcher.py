@@ -543,23 +543,32 @@ def fetch_stock_data(symbol: str, period: str = "5d") -> dict:
     """Fetch stock/index data via yfinance (free, no key).
     Returns: {name, symbol, price, change, change_pct, history, ok}
     """
+    import math
     if not _yf:
         return {"symbol": symbol, "ok": False, "error": "yfinance not installed"}
     for attempt in range(2):
         try:
             ticker = _yf.Ticker(symbol)
             hist = ticker.history(period=period)
-            hist = hist.dropna(subset=["Close"])
+            # NaN 행 완전 제거 (Close 기준)
+            if "Close" in hist.columns:
+                hist = hist[hist["Close"].notna() & hist["Close"].apply(lambda x: not math.isnan(x) if isinstance(x, float) else True)]
             # NaN 잔여 컬럼도 정리
             for col in ["High", "Low", "Volume"]:
                 if col in hist.columns:
                     hist[col] = hist[col].fillna(0)
             if hist.empty:
                 if attempt == 0:
-                    continue  # sleep 제거 — 즉시 재시도
+                    continue
                 return {"symbol": symbol, "ok": False}
             last_close = float(hist["Close"].iloc[-1])
+            if math.isnan(last_close):
+                if attempt == 0:
+                    continue
+                return {"symbol": symbol, "ok": False}
             prev_close = float(hist["Close"].iloc[-2]) if len(hist) >= 2 else last_close
+            if math.isnan(prev_close):
+                prev_close = last_close
             change = last_close - prev_close
             change_pct = (change / prev_close * 100) if prev_close else 0
             hist_records = []

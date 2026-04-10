@@ -28,8 +28,8 @@ with col_t:
 # 지수 정의
 # ═══════════════════════════════════════════════════════════════════════════
 KR_INDICES = {
-    "^KS11": ("KOSPI", "🇰🇷"),
-    "^KQ11": ("KOSDAQ", "🇰🇷"),
+    "069500.KS": ("KOSPI (KODEX200)", "🇰🇷"),
+    "229200.KS": ("KOSDAQ (KODEX150)", "🇰🇷"),
 }
 US_INDICES = {
     "^GSPC": ("S&P 500", "🇺🇸"),
@@ -63,6 +63,17 @@ tab_kr, tab_us, tab_compare, tab_expert = st.tabs([
 ])
 
 
+def _is_valid_num(v) -> bool:
+    """NaN/None 체크."""
+    import math
+    if v is None:
+        return False
+    try:
+        return not math.isnan(float(v))
+    except (TypeError, ValueError):
+        return False
+
+
 def _render_index_metrics(indices: dict):
     """지수 메트릭 카드 렌더링."""
     cols = st.columns(len(indices))
@@ -71,7 +82,7 @@ def _render_index_metrics(indices: dict):
         data = fetch_stock_data(symbol, period="5d")
         results[symbol] = data
         with col:
-            if data.get("ok"):
+            if data.get("ok") and _is_valid_num(data.get("price")):
                 delta = f"{data['change']:+,.2f} ({data['change_pct']:+.2f}%)"
                 col.metric(f"{flag} {name}", f"{data['price']:,.2f}", delta=delta)
             else:
@@ -126,10 +137,10 @@ with tab_kr:
     period_kr = st.selectbox("차트 기간", ["5d", "1mo", "3mo", "6mo", "1y"], index=1, key="kr_period")
 
     st.markdown("### 📈 KOSPI 추이")
-    _render_index_chart("^KS11", "KOSPI", period_kr)
+    _render_index_chart("069500.KS", "KOSPI", period_kr)
 
     st.markdown("### 📈 KOSDAQ 추이")
-    _render_index_chart("^KQ11", "KOSDAQ", period_kr)
+    _render_index_chart("229200.KS", "KOSDAQ", period_kr)
 
     st.markdown("### 🏢 주요 국내 종목")
     with st.spinner("종목 데이터 로딩 중..."):
@@ -183,8 +194,8 @@ with tab_compare:
     period_cmp = st.selectbox("비교 기간", ["5d", "1mo", "3mo", "6mo", "1y"], index=1, key="cmp_period")
 
     compare_pairs = [
-        ("^KS11", "KOSPI", "^GSPC", "S&P 500"),
-        ("^KQ11", "KOSDAQ", "^IXIC", "NASDAQ"),
+        ("069500.KS", "KOSPI", "^GSPC", "S&P 500"),
+        ("229200.KS", "KOSDAQ", "^IXIC", "NASDAQ"),
     ]
 
     for kr_sym, kr_name, us_sym, us_name in compare_pairs:
@@ -258,7 +269,7 @@ with tab_expert:
             dates = pd.date_range(end=datetime.datetime.today(), periods=7).strftime('%m-%d').tolist()
 
             # 실시간 KOSPI 데이터 기반 트렌드
-            kospi = fetch_stock_data("^KS11", period="5d")
+            kospi = fetch_stock_data("069500.KS", period="5d")
             if kospi.get("ok") and kospi.get("history"):
                 values = [r["Close"] for r in kospi["history"][-7:]]
                 # 날짜 수 맞추기
