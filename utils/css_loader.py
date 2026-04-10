@@ -76,9 +76,9 @@ def apply_custom_css():
             padding: 12px !important;
             margin: 6px 0 !important;
         }
-        /* iframe 높이 축소 */
+        /* iframe 반응형 높이 */
         iframe {
-            height: 350px !important;
+            height: min(400px, 60vh) !important;
         }
         /* 영상 카드 이미지 */
         .video-card img {
@@ -108,7 +108,7 @@ def apply_custom_css():
         h2 { font-size: 1.05rem !important; }
         h3 { font-size: 0.95rem !important; }
         iframe {
-            height: 280px !important;
+            height: min(300px, 50vh) !important;
         }
         /* 탭이 너무 많으면 스크롤 */
         .stTabs [data-baseweb="tab-list"] {

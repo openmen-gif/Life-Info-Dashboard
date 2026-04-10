@@ -104,6 +104,11 @@ def _parse_view_count(vc) -> int:
         return 0
 
 
+def _show_empty_state(msg: str):
+    """데이터 없음 상태 + 재시도 안내."""
+    st.info(f"{msg} 상단 🔄 데이터 갱신 버튼을 눌러 다시 시도하세요.")
+
+
 _PLATFORM_ICONS = {
     "YouTube": "▶️", "Naver TV": "🟢", "Kakao": "💬",
     "TikTok": "🎵", "X": "🐦", "Instagram": "📸",
@@ -194,7 +199,7 @@ def render_youtube_section(query: str, limit: int = 12, per_page: int = 4,
     _tl = "d" if sort == "latest" else None
     videos = fetch_youtube_search(query, limit=limit, timelimit=_tl)
     if not videos:
-        st.info("관련 영상을 찾지 못했습니다.")
+        _show_empty_state("관련 영상을 찾지 못했습니다.")
         return []
 
     # Sort toggle checkbox
@@ -253,6 +258,46 @@ def render_expert_page(
         sub_topics: [(tab_icon, tab_name, search_query), ...] for categorized news tabs
     """
     st.title(f"{icon} {title} 전문가")
+
+    # ── 페이지 설명 + 갱신 컨트롤 ─────────────────────────────────────────
+    _desc_map = {
+        "생활금융": "재테크·저축·금리·투자 트렌드를 실시간으로 확인하세요.",
+        "건강": "헬스케어·의약품·운동·정신건강 최신 동향을 제공합니다.",
+        "식생활": "외식·맛집·요리·식품 트렌드와 가격 동향을 분석합니다.",
+        "부동산": "아파트·청약·전세·매매 시장 동향을 실시간 모니터링합니다.",
+        "교육": "입시·에듀테크·교육 정책 최신 동향을 확인하세요.",
+        "여행": "국내외 여행지·항공권·호텔 트렌드를 제공합니다.",
+        "생활법률": "생활 속 법률·판례·규정 변경 사항을 확인하세요.",
+        "쇼핑/소비": "온라인 쇼핑·소비 트렌드·할인 정보를 분석합니다.",
+        "육아/보육": "육아·보육 정책·용품 트렌드를 확인하세요.",
+        "문화/예술": "전시·공연·K-문화 최신 동향을 제공합니다.",
+        "반려동물": "반려동물·사료·펫 헬스케어 트렌드를 분석합니다.",
+        "화훼/식물": "플랜테리어·다육식물·화훼 트렌드를 확인하세요.",
+        "환율유가": "달러·엔화·유가 실시간 동향을 모니터링합니다.",
+        "관세/무역": "수출입·관세·무역 동향을 분석합니다.",
+        "사업/창업": "스타트업·창업 지원·비즈니스 트렌드를 확인하세요.",
+        "운송/물류": "물류·해운·항공 운송 동향을 분석합니다.",
+        "해외 분쟁/전쟁": "글로벌 분쟁·안보 상황을 실시간 확인합니다.",
+        "IT/테크": "AI·반도체·클라우드·IT 기술 최신 동향을 제공합니다.",
+        "취업/채용": "채용·취업 시장·자격증·직업 전망을 분석합니다.",
+    }
+    desc = _desc_map.get(title, f"{title} 관련 최신 동향을 AI 전문가가 분석합니다.")
+    st.caption(desc)
+
+    col_r, col_t = st.columns([1, 3])
+    with col_r:
+        if st.button("🔄 데이터 갱신", type="primary", key=f"refresh_{title}"):
+            from utils.data_fetcher import fetch_news_search, fetch_web_search, fetch_youtube_search
+            fetch_news_search.clear()
+            fetch_web_search.clear()
+            fetch_youtube_search.clear()
+            if tickers:
+                from utils.data_fetcher import fetch_stock_data as _fsd
+                _fsd.clear()
+            st.rerun()
+    with col_t:
+        st.caption(f"마지막 갱신: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')} (자동 캐시 적용)")
+
     st.markdown("---")
 
     # ── 실시간 모니터링 (tickers) ─────────────────────────────────────────
@@ -304,7 +349,7 @@ def render_expert_page(
                     # 카테고리별 경향 분석
                     _render_news_trends(news, tab_name)
                 else:
-                    st.info(f"{tab_name} 관련 뉴스를 가져오지 못했습니다.")
+                    _show_empty_state(f"{tab_name} 관련 뉴스를 가져오지 못했습니다.")
         st.markdown("---")
 
     # ── 자동 뉴스 로딩 + 경향 분석 ──────────────────────────────────────
@@ -321,7 +366,7 @@ def render_expert_page(
             # 뉴스 경향 분석
             _render_news_trends(auto_news, title)
         else:
-            st.info(f"{title} 관련 뉴스를 가져오지 못했습니다.")
+            _show_empty_state(f"{title} 관련 뉴스를 가져오지 못했습니다.")
         st.markdown("---")
 
     # ── 전문가 검색 & 분석 ────────────────────────────────────────────────
@@ -410,7 +455,7 @@ def render_expert_page(
             # 검색 결과 경향 분석
             _render_news_trends(data["news"], data["query"])
         else:
-            st.info("관련 뉴스를 찾지 못했습니다.")
+            _show_empty_state("관련 뉴스를 찾지 못했습니다.")
 
         st.markdown("---")
         st.markdown("### 🌐 웹 검색 결과 요약")
@@ -422,7 +467,7 @@ def render_expert_page(
                     unsafe_allow_html=True,
                 )
         else:
-            st.info("관련 웹 검색 결과를 찾지 못했습니다.")
+            _show_empty_state("관련 웹 검색 결과를 찾지 못했습니다.")
 
         st.markdown("---")
         st.markdown(f"### 🎬 관련 영상")
@@ -433,7 +478,7 @@ def render_expert_page(
                 videos = sorted(data["youtube"], key=lambda v: _parse_view_count(v.get("view_count")), reverse=True)
             _render_paginated_videos(videos, f"yt_ep_{title}")
         else:
-            st.info("관련 영상을 찾지 못했습니다.")
+            _show_empty_state("관련 영상을 찾지 못했습니다.")
 
         st.markdown("---")
 
