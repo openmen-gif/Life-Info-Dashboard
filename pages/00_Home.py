@@ -2,8 +2,8 @@
 import streamlit as st
 import datetime
 from utils.css_loader import apply_custom_css
-from utils.data_fetcher import fetch_weather, fetch_news
-from utils.ui_components import render_weather_card, render_news_summary
+from utils.data_fetcher import fetch_weather, fetch_news, fetch_traffic_status
+from utils.ui_components import render_weather_card, render_news_summary, render_traffic_summary
 from utils.report_downloader import render_download_buttons
 
 apply_custom_css()
@@ -27,7 +27,9 @@ with col2:
 
 # ── 실시간 교통 ──────────────────────────────────────────────────────────
 st.markdown("---")
-st.markdown("### 🚗 실시간 교통")
+traffic = fetch_traffic_status()
+render_traffic_summary(traffic, limit=4)
+
 _tc1, _tc2, _tc3 = st.columns(3)
 with _tc1:
     st.link_button("🗺️ 네이버 지도 (교통)", "https://map.naver.com/p?c=15.00,0,0,0,dh&mapMode=0&trafficMode=1", use_container_width=True)
