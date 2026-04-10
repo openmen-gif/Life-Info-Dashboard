@@ -4,7 +4,7 @@ import streamlit as st
 import pandas as pd
 import datetime
 from utils.css_loader import apply_custom_css
-from utils.data_fetcher import fetch_stock_data, fetch_news_search, fetch_web_search, fetch_youtube_search
+from utils.data_fetcher import fetch_stock_data, fetch_kr_index, fetch_news_search, fetch_web_search, fetch_youtube_search
 from utils.report_downloader import render_download_buttons
 
 apply_custom_css()
@@ -28,8 +28,8 @@ with col_t:
 # 지수 정의
 # ═══════════════════════════════════════════════════════════════════════════
 KR_INDICES = {
-    "069500.KS": ("KOSPI (KODEX200)", "🇰🇷"),
-    "229200.KS": ("KOSDAQ (KODEX150)", "🇰🇷"),
+    "KOSPI": ("KOSPI", "🇰🇷"),
+    "KOSDAQ": ("KOSDAQ", "🇰🇷"),
 }
 US_INDICES = {
     "^GSPC": ("S&P 500", "🇺🇸"),
@@ -74,12 +74,12 @@ def _is_valid_num(v) -> bool:
         return False
 
 
-def _render_index_metrics(indices: dict):
-    """지수 메트릭 카드 렌더링."""
+def _render_index_metrics(indices: dict, use_naver: bool = False):
+    """지수 메트릭 카드 렌더링. use_naver=True면 네이버 금융 API 사용."""
     cols = st.columns(len(indices))
     results = {}
     for col, (symbol, (name, flag)) in zip(cols, indices.items()):
-        data = fetch_stock_data(symbol, period="5d")
+        data = fetch_kr_index(symbol) if use_naver else fetch_stock_data(symbol, period="5d")
         results[symbol] = data
         with col:
             if data.get("ok") and _is_valid_num(data.get("price")):
@@ -132,15 +132,15 @@ def _render_stock_table(stocks: dict):
 # ── 탭 1: 국내 증시 ──────────────────────────────────────────────────────
 with tab_kr:
     st.markdown("## 🇰🇷 국내 증시 실시간 현황")
-    kr_data = _render_index_metrics(KR_INDICES)
+    kr_data = _render_index_metrics(KR_INDICES, use_naver=True)
 
     period_kr = st.selectbox("차트 기간", ["5d", "1mo", "3mo", "6mo", "1y"], index=1, key="kr_period")
 
-    st.markdown("### 📈 KOSPI 추이")
-    _render_index_chart("069500.KS", "KOSPI", period_kr)
+    st.markdown("### 📈 KOSPI 추이 (KODEX 200 ETF)")
+    _render_index_chart("069500.KS", "KODEX 200", period_kr)
 
-    st.markdown("### 📈 KOSDAQ 추이")
-    _render_index_chart("229200.KS", "KOSDAQ", period_kr)
+    st.markdown("### 📈 KOSDAQ 추이 (KODEX KOSDAQ150 ETF)")
+    _render_index_chart("229200.KS", "KODEX KOSDAQ150", period_kr)
 
     st.markdown("### 🏢 주요 국내 종목")
     with st.spinner("종목 데이터 로딩 중..."):

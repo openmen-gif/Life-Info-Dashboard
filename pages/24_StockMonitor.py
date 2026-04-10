@@ -9,15 +9,15 @@ import streamlit as st
 import datetime
 import pandas as pd
 from utils.css_loader import apply_custom_css
-from utils.data_fetcher import fetch_stock_data, fetch_news_search, fetch_youtube_search
+from utils.data_fetcher import fetch_stock_data, fetch_kr_index, fetch_news_search, fetch_youtube_search
 from utils.report_downloader import render_download_buttons
 
 apply_custom_css()
 
 # ── 지수 & 종목 정의 ─────────────────────────────────────────────────────
 KR_INDICES = {
-    "069500.KS": "KOSPI",
-    "229200.KS": "KOSDAQ",
+    "KOSPI": "KOSPI",
+    "KOSDAQ": "KOSDAQ",
 }
 US_INDICES = {
     "^GSPC": "S&P 500",
@@ -59,8 +59,9 @@ if st.button("🔄 데이터 갱신", type="primary"):
 st.caption(f"마지막 갱신: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')} (5분 자동 캐시)")
 
 # ── 지수 데이터 1회 fetch → 전체 재활용 ──────────────────────────────────
-_all_indices = {**KR_INDICES, **US_INDICES}
-_idx_data_5d = {symbol: fetch_stock_data(symbol, period="5d") for symbol in _all_indices}
+_kr_data = {code: fetch_kr_index(code) for code in KR_INDICES}
+_us_data = {symbol: fetch_stock_data(symbol, period="5d") for symbol in US_INDICES}
+_idx_data_5d = {**_kr_data, **_us_data}
 
 
 # ═══════════════════════════════════════════════════════════════════════════

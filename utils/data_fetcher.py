@@ -539,6 +539,30 @@ def fetch_exchange_rates() -> dict:
 
 
 @st.cache_data(ttl=300, show_spinner=False)
+def fetch_kr_index(code: str = "KOSPI") -> dict:
+    """네이버 금융 API로 한국 지수(KOSPI/KOSDAQ) 실시간 데이터 조회."""
+    try:
+        url = f"https://m.stock.naver.com/api/index/{code}/basic"
+        r = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=8)
+        r.raise_for_status()
+        d = r.json()
+        price = float(d.get("closePrice", "0").replace(",", ""))
+        change = float(d.get("compareToPreviousClosePrice", "0").replace(",", ""))
+        change_pct = float(d.get("fluctuationsRatio", "0").replace(",", ""))
+        return {
+            "name": code, "symbol": code,
+            "price": round(price, 2),
+            "change": round(change, 2),
+            "change_pct": round(change_pct, 2),
+            "high": price, "low": price, "volume": 0,
+            "history": [], "ok": True,
+            "updated": datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
+        }
+    except Exception:
+        return {"symbol": code, "ok": False}
+
+
+@st.cache_data(ttl=300, show_spinner=False)
 def fetch_stock_data(symbol: str, period: str = "5d") -> dict:
     """Fetch stock/index data via yfinance (free, no key).
     Returns: {name, symbol, price, change, change_pct, history, ok}
