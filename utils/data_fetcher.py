@@ -449,11 +449,11 @@ def _fetch_news_ddg(query: str, limit: int = 10, timelimit: str = "w") -> list[d
         return []
 
 
-def _fetch_news_rss(query: str, limit: int = 10) -> list[dict]:
-    """Fallback: search news via Google News RSS (최근 7일)."""
+def _fetch_news_rss(query: str, limit: int = 10, rss_when: str = "7d") -> list[dict]:
+    """Fallback: search news via Google News RSS."""
     import urllib.parse
     encoded = urllib.parse.quote(query)
-    url = f"https://news.google.com/rss/search?q={encoded}+when:7d&hl=ko&gl=KR&ceid=KR:ko"
+    url = f"https://news.google.com/rss/search?q={encoded}+when:{rss_when}&hl=ko&gl=KR&ceid=KR:ko"
     try:
         _BROWSER_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
         feed = feedparser.parse(url, request_headers={"User-Agent": _BROWSER_UA})
@@ -983,8 +983,13 @@ def fetch_youtube_search(query: str, limit: int = 12, timelimit: str | None = No
 
 
 @st.cache_data(ttl=900, show_spinner=False)
-def fetch_news_search(query: str, limit: int = 10) -> list[dict]:
-    """Fetch news search results. DuckDuckGo first (better snippets), then RSS fallback."""
+def fetch_news_search(query: str, limit: int = 10, timelimit: str = "w") -> list[dict]:
+    """Fetch news search results. DuckDuckGo first (better snippets), then RSS fallback.
+
+    Args:
+        timelimit: "d" (1일), "w" (1주), "m" (1개월), "y" (1년)
+    """
+    _rss_when = {"d": "1d", "w": "7d", "m": "30d", "y": "365d"}.get(timelimit, "7d")
     news = []
     if IS_API_MODE:
         try:
@@ -994,9 +999,9 @@ def fetch_news_search(query: str, limit: int = 10) -> list[dict]:
         except Exception:
             pass
     if not news:
-        news = _fetch_news_ddg(query, limit=limit)
+        news = _fetch_news_ddg(query, limit=limit, timelimit=timelimit)
     if not news:
-        news = _fetch_news_rss(query, limit=limit)
+        news = _fetch_news_rss(query, limit=limit, rss_when=_rss_when)
     domain = _detect_domain(query)
     news = _filter_by_domain(news, domain, title_key="title")
     news = _deduplicate_news(news, title_key="title")

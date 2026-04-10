@@ -290,7 +290,7 @@ def render_expert_page(
     desc = _desc_map.get(title, f"{title} 관련 최신 동향을 AI 전문가가 분석합니다.")
     st.caption(desc)
 
-    col_r, col_t = st.columns([1, 3])
+    col_r, col_period, col_t = st.columns([1, 1, 2])
     with col_r:
         if st.button("🔄 데이터 갱신", type="primary", key=f"refresh_{title}"):
             fetch_news_search.clear()
@@ -300,6 +300,13 @@ def render_expert_page(
                 from utils.data_fetcher import fetch_stock_data as _fsd
                 _fsd.clear()
             st.rerun()
+    with col_period:
+        _period_options = {"1일": "d", "1주일": "w", "1개월": "m"}
+        _selected_period = st.selectbox(
+            "뉴스 검색 기간", list(_period_options.keys()), index=1,
+            key=f"news_period_{title}",
+        )
+        _news_timelimit = _period_options[_selected_period]
     with col_t:
         st.caption(f"마지막 갱신: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')} (자동 캐시 적용)")
 
@@ -343,7 +350,7 @@ def render_expert_page(
         tabs = st.tabs(tab_labels)
         for tab, (tab_icon, tab_name, tab_query) in zip(tabs, sub_topics):
             with tab:
-                news = fetch_news_search(tab_query, limit=5)
+                news = fetch_news_search(tab_query, limit=5, timelimit=_news_timelimit)
                 if news:
                     for n in news[:4]:
                         st.markdown(
@@ -360,7 +367,7 @@ def render_expert_page(
     # ── 자동 뉴스 로딩 + 경향 분석 ──────────────────────────────────────
     if auto_news_query:
         st.markdown(f"### 📰 {title} 최신 뉴스")
-        auto_news = fetch_news_search(auto_news_query, limit=8)
+        auto_news = fetch_news_search(auto_news_query, limit=8, timelimit=_news_timelimit)
         if auto_news:
             for n in auto_news[:5]:
                 st.markdown(
@@ -388,7 +395,7 @@ def render_expert_page(
     if analyze_btn:
         with st.spinner("최신 트렌드 및 뉴스 수집 중..."):
             web_results = fetch_web_search(query, limit=5)
-            news_results = fetch_news_search(query, limit=8)
+            news_results = fetch_news_search(query, limit=8, timelimit=_news_timelimit)
             _yt_tl = "d" if youtube_sort == "latest" else None
             youtube_results = fetch_youtube_search(query, limit=12, timelimit=_yt_tl)
 
