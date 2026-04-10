@@ -38,7 +38,6 @@ pages = {
         st.Page("pages/21_Transport.py", title="운송/물류", icon="🚚"),
         st.Page("pages/22_GlobalWar.py", title="해외 분쟁/전쟁", icon="🌍"),
         st.Page("pages/23_OilExchange.py", title="유가 & 환율 모니터", icon="⛽"),
-        st.Page("pages/24_StockMonitor.py", title="주식 모니터링", icon="📊"),
         st.Page("pages/25_Tech.py", title="IT/테크", icon="💻"),
         st.Page("pages/26_Jobs.py", title="취업/채용", icon="💼"),
     ],
