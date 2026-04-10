@@ -417,13 +417,17 @@ def _is_similar(text1: str, text2: str, threshold: float = 0.6) -> bool:
     return overlap / min(len(w1), len(w2)) >= threshold
 
 
-def _fetch_news_ddg(query: str, limit: int = 10) -> list[dict]:
-    """Fetch news via DuckDuckGo — provides real article snippets."""
+def _fetch_news_ddg(query: str, limit: int = 10, timelimit: str = "w") -> list[dict]:
+    """Fetch news via DuckDuckGo — provides real article snippets.
+
+    Args:
+        timelimit: "d" (1일), "w" (1주), "m" (1개월)
+    """
     try:
         if not _DDGS:
             return []
         with _DDGS() as ddgs:
-            results = list(ddgs.news(query, region="kr-kr", max_results=limit))
+            results = list(ddgs.news(query, region="kr-kr", timelimit=timelimit, max_results=limit))
         items = []
         for r in results:
             title = _strip_html(r.get("title", ""))
@@ -446,10 +450,10 @@ def _fetch_news_ddg(query: str, limit: int = 10) -> list[dict]:
 
 
 def _fetch_news_rss(query: str, limit: int = 10) -> list[dict]:
-    """Fallback: search news via Google News RSS."""
+    """Fallback: search news via Google News RSS (최근 7일)."""
     import urllib.parse
     encoded = urllib.parse.quote(query)
-    url = f"https://news.google.com/rss/search?q={encoded}&hl=ko&gl=KR&ceid=KR:ko"
+    url = f"https://news.google.com/rss/search?q={encoded}+when:7d&hl=ko&gl=KR&ceid=KR:ko"
     try:
         _BROWSER_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
         feed = feedparser.parse(url, request_headers={"User-Agent": _BROWSER_UA})
