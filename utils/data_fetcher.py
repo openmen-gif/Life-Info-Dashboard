@@ -1035,13 +1035,20 @@ def fetch_youtube_search(query: str, limit: int = 12, timelimit: str | None = No
 
 
 @st.cache_data(ttl=900, show_spinner=False)
-def fetch_news_search(query: str, limit: int = 10, timelimit: str = "w") -> list[dict]:
+def fetch_news_search(query: str, limit: int = 10, timelimit: str = "m") -> list[dict]:
     """Fetch news search results. DuckDuckGo first (better snippets), then RSS fallback.
 
     Args:
-        timelimit: "d" (1일), "w" (1주), "m" (1개월), "y" (1년)
+        timelimit: "d"(1일), "w"(1주), "m"(1개월), "3m"(3개월),
+                   "6m"(6개월), "y"(1년), "2y"(2년), "3y"(3년)
     """
-    _rss_when = {"d": "1d", "w": "7d", "m": "30d", "y": "365d"}.get(timelimit, "7d")
+    _rss_when_map = {
+        "d": "1d", "w": "7d", "m": "30d", "3m": "90d",
+        "6m": "180d", "y": "365d", "2y": "730d", "3y": "1095d",
+    }
+    _ddg_tl_map = {"d": "d", "w": "w", "m": "m", "3m": "m", "6m": "m", "y": "y", "2y": "y", "3y": "y"}
+    _rss_when = _rss_when_map.get(timelimit, "30d")
+    _ddg_tl = _ddg_tl_map.get(timelimit, "m")
     news = []
     if IS_API_MODE:
         try:
@@ -1051,9 +1058,13 @@ def fetch_news_search(query: str, limit: int = 10, timelimit: str = "w") -> list
         except Exception:
             pass
     if not news:
-        news = _fetch_news_ddg(query, limit=limit, timelimit=timelimit)
+        news = _fetch_news_ddg(query, limit=limit, timelimit=_ddg_tl)
     if not news:
         news = _fetch_news_rss(query, limit=limit, rss_when=_rss_when)
+    # DDG 결과 부족 시 RSS로 보충
+    if len(news) < limit:
+        more = _fetch_news_rss(query, limit=limit, rss_when=_rss_when)
+        news = _deduplicate_news(news + more, title_key="title")
     domain = _detect_domain(query)
     news = _filter_by_domain(news, domain, title_key="title")
     news = _deduplicate_news(news, title_key="title")

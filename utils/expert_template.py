@@ -301,12 +301,14 @@ def render_expert_page(
                 _fsd.clear()
             st.rerun()
     with col_period:
-        _period_options = {"1일": "d", "1주일": "w", "1개월": "m"}
-        _selected_period = st.selectbox(
-            "뉴스 검색 기간", list(_period_options.keys()), index=1,
+        _period_labels = ["1일", "1주일", "1개월", "3개월", "6개월", "1년", "2년", "3년"]
+        _period_values = ["d", "w", "m", "3m", "6m", "y", "2y", "3y"]
+        _sel_idx = st.selectbox(
+            "뉴스 검색 기간", range(len(_period_labels)),
+            index=2, format_func=lambda i: _period_labels[i],
             key=f"news_period_{title}",
         )
-        _news_timelimit = _period_options[_selected_period]
+        _news_timelimit = _period_values[_sel_idx]
     with col_t:
         st.caption(f"마지막 갱신: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')} (자동 캐시 적용)")
 
