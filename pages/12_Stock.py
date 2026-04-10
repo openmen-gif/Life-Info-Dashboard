@@ -91,8 +91,26 @@ def _render_index_metrics(indices: dict, use_naver: bool = False):
 
 
 def _render_index_chart(symbol: str, name: str, period: str = "1mo"):
-    """지수 차트 + 통계."""
+    """지수 차트 + 통계 (미국 지수용 — yfinance)."""
     data = fetch_stock_data(symbol, period=period)
+    if data.get("ok") and data.get("history"):
+        df = pd.DataFrame(data["history"])
+        st.line_chart(df.set_index("Date")["Close"])
+
+        prices = [r["Close"] for r in data["history"]]
+        sc1, sc2, sc3, sc4 = st.columns(4)
+        sc1.metric("최고", f"{max(prices):,.2f}")
+        sc2.metric("최저", f"{min(prices):,.2f}")
+        sc3.metric("평균", f"{sum(prices)/len(prices):,.2f}")
+        change_total = prices[-1] - prices[0]
+        sc4.metric("기간 변동", f"{change_total:+,.2f}")
+    else:
+        st.warning(f"{name} 차트 데이터를 가져오지 못했습니다.")
+
+
+def _render_kr_index_chart(code: str, name: str, period: str = "1mo"):
+    """국내 지수 차트 + 통계 (네이버 금융 API)."""
+    data = fetch_kr_index(code, period=period)
     if data.get("ok") and data.get("history"):
         df = pd.DataFrame(data["history"])
         st.line_chart(df.set_index("Date")["Close"])
@@ -136,11 +154,11 @@ with tab_kr:
 
     period_kr = st.selectbox("차트 기간", ["5d", "1mo", "3mo", "6mo", "1y"], index=1, key="kr_period")
 
-    st.markdown("### 📈 KOSPI 추이 (KODEX 200 ETF)")
-    _render_index_chart("069500.KS", "KODEX 200", period_kr)
+    st.markdown("### 📈 KOSPI 추이")
+    _render_kr_index_chart("KOSPI", "KOSPI", period_kr)
 
-    st.markdown("### 📈 KOSDAQ 추이 (KODEX KOSDAQ150 ETF)")
-    _render_index_chart("229200.KS", "KODEX KOSDAQ150", period_kr)
+    st.markdown("### 📈 KOSDAQ 추이")
+    _render_kr_index_chart("KOSDAQ", "KOSDAQ", period_kr)
 
     st.markdown("### 🏢 주요 국내 종목")
     with st.spinner("종목 데이터 로딩 중..."):

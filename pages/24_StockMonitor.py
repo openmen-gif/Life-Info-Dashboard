@@ -201,9 +201,24 @@ with tab_kr:
     kr_tabs = st.tabs(list(KR_INDICES.values()))
     for tab, (code, name) in zip(kr_tabs, KR_INDICES.items()):
         with tab:
-            etf_sym = KR_ETF_MAP.get(code, "069500.KS")
-            st.markdown(f"#### 📈 {name} 추이 (ETF 기반)")
-            _render_chart_with_stats(etf_sym, name, kr_period)
+            st.markdown(f"#### 📈 {name} 추이")
+            kr_hist = fetch_kr_index(code, period=kr_period)
+            if kr_hist.get("ok") and kr_hist.get("history"):
+                df = pd.DataFrame(kr_hist["history"])
+                st.line_chart(df.set_index("Date")["Close"])
+                prices = [r["Close"] for r in kr_hist["history"]]
+                if prices:
+                    avg_price = sum(prices) / len(prices)
+                    total_change = prices[-1] - prices[0]
+                    total_pct = (total_change / prices[0] * 100) if prices[0] else 0
+                    sc1, sc2, sc3, sc4, sc5 = st.columns(5)
+                    sc1.metric("현재", f"{prices[-1]:,.2f}")
+                    sc2.metric("최고", f"{max(prices):,.2f}")
+                    sc3.metric("최저", f"{min(prices):,.2f}")
+                    sc4.metric("평균", f"{avg_price:,.2f}")
+                    sc5.metric("기간 등락", f"{total_change:+,.2f} ({total_pct:+.1f}%)")
+            else:
+                st.warning(f"{name} 차트 데이터를 가져오지 못했습니다.")
 
     st.markdown("### 🏢 주요 국내 종목 시세")
     with st.spinner("국내 종목 로딩 중..."):

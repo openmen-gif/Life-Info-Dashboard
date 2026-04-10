@@ -542,24 +542,67 @@ def fetch_exchange_rates() -> dict:
         return {"rates": {}, "updated": str(e), "ok": False}
 
 
+def _kr_period_to_range(period: str) -> str:
+    """yfinance period → 네이버 차트 range 변환."""
+    return {"5d": "1W", "1mo": "1M", "3mo": "3M", "6mo": "6M", "1y": "1Y"}.get(period, "1M")
+
+
 @st.cache_data(ttl=300, show_spinner=False)
-def fetch_kr_index(code: str = "KOSPI") -> dict:
-    """네이버 금융 API로 한국 지수(KOSPI/KOSDAQ) 실시간 데이터 조회."""
+def fetch_kr_index(code: str = "KOSPI", period: str = "1mo") -> dict:
+    """네이버 금융 API로 한국 지수(KOSPI/KOSDAQ) 실시간 + 히스토리 데이터 조회."""
+    headers = {"User-Agent": "Mozilla/5.0"}
     try:
+        # 1) 현재가 조회
         url = f"https://m.stock.naver.com/api/index/{code}/basic"
-        r = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=8)
+        r = requests.get(url, headers=headers, timeout=8)
         r.raise_for_status()
         d = r.json()
         price = float(d.get("closePrice", "0").replace(",", ""))
         change = float(d.get("compareToPreviousClosePrice", "0").replace(",", ""))
         change_pct = float(d.get("fluctuationsRatio", "0").replace(",", ""))
+
+        # 2) 히스토리 차트 데이터 조회
+        history = []
+        high_val, low_val = price, price
+        try:
+            period_days = {"5d": 5, "1mo": 22, "3mo": 66, "6mo": 132, "1y": 252}.get(period, 22)
+            chart_url = f"https://m.stock.naver.com/api/index/{code}/price?pageSize={period_days}&page=1"
+            cr = requests.get(chart_url, headers=headers, timeout=8)
+            cr.raise_for_status()
+            chart_data = cr.json()
+            # 네이버 price API: list of {localTradedAt, closePrice, ...}
+            if isinstance(chart_data, list):
+                price_list = chart_data
+            else:
+                price_list = chart_data.get("priceInfos", chart_data.get("prices", []))
+
+            price_list = price_list[:period_days]
+
+            for item in reversed(price_list):
+                close_str = item.get("closePrice", "0")
+                close_val = float(str(close_str).replace(",", ""))
+                date_str = item.get("localTradedAt", "")
+                if date_str and len(date_str) >= 10:
+                    date_fmt = date_str[5:10].replace("-", "-")
+                else:
+                    date_fmt = ""
+                if close_val > 0:
+                    history.append({"Date": date_fmt, "Close": round(close_val, 2), "Volume": 0})
+
+            if history:
+                closes = [h["Close"] for h in history]
+                high_val = max(closes)
+                low_val = min(closes)
+        except Exception:
+            pass
+
         return {
             "name": code, "symbol": code,
             "price": round(price, 2),
             "change": round(change, 2),
             "change_pct": round(change_pct, 2),
-            "high": price, "low": price, "volume": 0,
-            "history": [], "ok": True,
+            "high": round(high_val, 2), "low": round(low_val, 2), "volume": 0,
+            "history": history, "ok": True,
             "updated": datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
         }
     except Exception:
