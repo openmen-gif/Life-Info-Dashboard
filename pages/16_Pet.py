@@ -9,6 +9,7 @@ render_expert_page(
     title="반려동물",
     icon="🐾",
     default_query="반려동물 사료 펫 헬스케어 트렌드",
+    auto_news_query="반려동물 사료 유기동물 펫 동물병원",
     sub_topics=[
         ("🐕", "강아지", "강아지 품종 훈련 산책 사료 추천"),
         ("🐈", "고양이", "고양이 품종 성격 사료 건강 캣타워"),

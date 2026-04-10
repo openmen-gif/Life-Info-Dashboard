@@ -10,6 +10,7 @@ render_expert_page(
     icon="🏥",
     default_query="최신 헬스케어 메디컬 건강관리 동향",
     youtube_sort="latest",
+    auto_news_query="의료 건강 병원 질병 예방접종 헬스케어",
     sub_topics=[
         ("🦠", "감염병/예방", "감염병 코로나 독감 예방접종 방역"),
         ("💪", "운동/다이어트", "운동 다이어트 헬스 피트니스 체중관리"),

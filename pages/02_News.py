@@ -46,10 +46,12 @@ _yt_news = render_youtube_section("오늘 뉴스 시사 이슈 분석 속보", s
 
 # ── 보고서 다운로드 ────────────────────────────────────────────────────────
 st.markdown("---")
-# 모든 탭의 뉴스를 수집하여 다운로드 컨텍스트 생성
+# 캐시된 뉴스를 재활용하여 다운로드 컨텍스트 생성 (중복 fetch 제거)
 all_news_items = []
+cat_counts = []
 for cat in categories:
     cat_news = fetch_news(cat, limit=10)
+    cat_counts.append({"카테고리": cat, "기사수": len(cat_news or [])})
     if cat_news:
         all_news_items.extend(cat_news[:5])
 
@@ -58,6 +60,6 @@ news_context = {
     "news": all_news_items,
     "web": [],
     "youtube": _yt_news,
-    "df": [{"카테고리": cat, "기사수": len(fetch_news(cat, limit=10) or [])} for cat in categories],
+    "df": cat_counts,
 }
 render_download_buttons(context=news_context)

@@ -9,6 +9,7 @@ render_expert_page(
     title="식생활",
     icon="🍽️",
     default_query="글로벌 외식 국내 맛집 요리 트렌드",
+    auto_news_query="식품 물가 맛집 식중독 농산물 가격",
     sub_topics=[
         ("🍜", "맛집/외식", "맛집 추천 외식 레스토랑 카페 트렌드"),
         ("🛒", "식료품/물가", "식료품 물가 장바구니 마트 가격"),

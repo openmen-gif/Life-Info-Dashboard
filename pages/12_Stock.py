@@ -4,7 +4,7 @@ import streamlit as st
 import pandas as pd
 import datetime
 from utils.css_loader import apply_custom_css
-from utils.data_fetcher import fetch_stock_data, fetch_news_search, fetch_web_search, fetch_youtube_search
+from utils.data_fetcher import fetch_stock_data, fetch_kr_index, fetch_news_search, fetch_web_search, fetch_youtube_search
 from utils.report_downloader import render_download_buttons
 
 apply_custom_css()
@@ -16,7 +16,10 @@ st.markdown("---")
 col_r, col_t = st.columns([1, 3])
 with col_r:
     if st.button("🔄 데이터 갱신", type="primary"):
-        st.cache_data.clear()
+        fetch_stock_data.clear()
+        fetch_news_search.clear()
+        fetch_web_search.clear()
+        fetch_youtube_search.clear()
         st.rerun()
 with col_t:
     st.caption(f"마지막 갱신: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')} (5분 자동 캐시)")
@@ -25,8 +28,8 @@ with col_t:
 # 지수 정의
 # ═══════════════════════════════════════════════════════════════════════════
 KR_INDICES = {
-    "^KS11": ("KOSPI", "🇰🇷"),
-    "^KQ11": ("KOSDAQ", "🇰🇷"),
+    "KOSPI": ("KOSPI", "🇰🇷"),
+    "KOSDAQ": ("KOSDAQ", "🇰🇷"),
 }
 US_INDICES = {
     "^GSPC": ("S&P 500", "🇺🇸"),
@@ -55,20 +58,31 @@ POPULAR_US_STOCKS = {
 # ═══════════════════════════════════════════════════════════════════════════
 # 탭 구성
 # ═══════════════════════════════════════════════════════════════════════════
-tab_kr, tab_us, tab_compare, tab_expert = st.tabs([
-    "🇰🇷 국내 증시", "🇺🇸 미국 증시", "📊 국장 vs 미장", "📝 전문가 분석"
+tab_kr, tab_us, tab_compare, tab_watchlist, tab_expert = st.tabs([
+    "🇰🇷 국내 증시", "🇺🇸 미국 증시", "📊 국장 vs 미장", "⭐ 관심 종목", "📝 전문가 분석"
 ])
 
 
-def _render_index_metrics(indices: dict):
-    """지수 메트릭 카드 렌더링."""
+def _is_valid_num(v) -> bool:
+    """NaN/None 체크."""
+    import math
+    if v is None:
+        return False
+    try:
+        return not math.isnan(float(v))
+    except (TypeError, ValueError):
+        return False
+
+
+def _render_index_metrics(indices: dict, use_naver: bool = False):
+    """지수 메트릭 카드 렌더링. use_naver=True면 네이버 금융 API 사용."""
     cols = st.columns(len(indices))
     results = {}
     for col, (symbol, (name, flag)) in zip(cols, indices.items()):
-        data = fetch_stock_data(symbol, period="5d")
+        data = fetch_kr_index(symbol) if use_naver else fetch_stock_data(symbol, period="5d")
         results[symbol] = data
         with col:
-            if data.get("ok"):
+            if data.get("ok") and _is_valid_num(data.get("price")):
                 delta = f"{data['change']:+,.2f} ({data['change_pct']:+.2f}%)"
                 col.metric(f"{flag} {name}", f"{data['price']:,.2f}", delta=delta)
             else:
@@ -118,15 +132,15 @@ def _render_stock_table(stocks: dict):
 # ── 탭 1: 국내 증시 ──────────────────────────────────────────────────────
 with tab_kr:
     st.markdown("## 🇰🇷 국내 증시 실시간 현황")
-    kr_data = _render_index_metrics(KR_INDICES)
+    kr_data = _render_index_metrics(KR_INDICES, use_naver=True)
 
     period_kr = st.selectbox("차트 기간", ["5d", "1mo", "3mo", "6mo", "1y"], index=1, key="kr_period")
 
-    st.markdown("### 📈 KOSPI 추이")
-    _render_index_chart("^KS11", "KOSPI", period_kr)
+    st.markdown("### 📈 KOSPI 추이 (KODEX 200 ETF)")
+    _render_index_chart("069500.KS", "KODEX 200", period_kr)
 
-    st.markdown("### 📈 KOSDAQ 추이")
-    _render_index_chart("^KQ11", "KOSDAQ", period_kr)
+    st.markdown("### 📈 KOSDAQ 추이 (KODEX KOSDAQ150 ETF)")
+    _render_index_chart("229200.KS", "KODEX KOSDAQ150", period_kr)
 
     st.markdown("### 🏢 주요 국내 종목")
     with st.spinner("종목 데이터 로딩 중..."):
@@ -180,45 +194,46 @@ with tab_compare:
     period_cmp = st.selectbox("비교 기간", ["5d", "1mo", "3mo", "6mo", "1y"], index=1, key="cmp_period")
 
     compare_pairs = [
-        ("^KS11", "KOSPI", "^GSPC", "S&P 500"),
-        ("^KQ11", "KOSDAQ", "^IXIC", "NASDAQ"),
+        ("069500.KS", "KOSPI", "^GSPC", "S&P 500"),
+        ("229200.KS", "KOSDAQ", "^IXIC", "NASDAQ"),
     ]
 
     for kr_sym, kr_name, us_sym, us_name in compare_pairs:
         st.markdown(f"### {kr_name} vs {us_name}")
-        kr_d = fetch_stock_data(kr_sym, period=period_cmp)
         us_d = fetch_stock_data(us_sym, period=period_cmp)
+        kr_idx = fetch_kr_index(kr_name)  # 실제 지수값 (네이버 금융)
 
         c1, c2 = st.columns(2)
         with c1:
-            if kr_d.get("ok"):
-                delta = f"{kr_d['change']:+,.2f} ({kr_d['change_pct']:+.2f}%)"
-                st.metric(f"🇰🇷 {kr_name}", f"{kr_d['price']:,.2f}", delta=delta)
+            if kr_idx.get("ok") and _is_valid_num(kr_idx.get("price")):
+                delta = f"{kr_idx['change']:+,.2f} ({kr_idx['change_pct']:+.2f}%)"
+                st.metric(f"🇰🇷 {kr_name}", f"{kr_idx['price']:,.2f}", delta=delta)
             else:
                 st.metric(f"🇰🇷 {kr_name}", "N/A")
         with c2:
-            if us_d.get("ok"):
+            if us_d.get("ok") and _is_valid_num(us_d.get("price")):
                 delta = f"{us_d['change']:+,.2f} ({us_d['change_pct']:+.2f}%)"
                 st.metric(f"🇺🇸 {us_name}", f"{us_d['price']:,.2f}", delta=delta)
             else:
                 st.metric(f"🇺🇸 {us_name}", "N/A")
 
-        # 정규화 차트 (시작점=100 기준)
-        if kr_d.get("ok") and us_d.get("ok") and kr_d.get("history") and us_d.get("history"):
-            kr_prices = [r["Close"] for r in kr_d["history"]]
+        # 정규화 차트 (ETF 기반, 시작점=100 기준)
+        kr_d_chart = fetch_stock_data(kr_sym, period=period_cmp)
+        if kr_d_chart.get("ok") and us_d.get("ok") and kr_d_chart.get("history") and us_d.get("history"):
+            kr_prices = [r["Close"] for r in kr_d_chart["history"]]
             us_prices = [r["Close"] for r in us_d["history"]]
             min_len = min(len(kr_prices), len(us_prices))
             if min_len > 1:
                 kr_norm = [p / kr_prices[0] * 100 for p in kr_prices[:min_len]]
                 us_norm = [p / us_prices[0] * 100 for p in us_prices[:min_len]]
-                dates = [r["Date"] for r in kr_d["history"][:min_len]]
+                dates = [r["Date"] for r in kr_d_chart["history"][:min_len]]
                 df_cmp = pd.DataFrame({
                     "Date": dates,
                     kr_name: kr_norm,
                     us_name: us_norm,
                 }).set_index("Date")
                 st.line_chart(df_cmp)
-                st.caption("※ 시작일 = 100 기준 정규화 비교")
+                st.caption("※ 시작일 = 100 기준 정규화 비교 (ETF 기반 차트)")
         st.markdown("---")
 
     # 통합 비교 테이블
@@ -239,7 +254,84 @@ with tab_compare:
     if comp_rows:
         st.dataframe(pd.DataFrame(comp_rows), use_container_width=True, hide_index=True)
 
-# ── 탭 4: 전문가 분석 ────────────────────────────────────────────────────
+# ── 탭 4: 관심 종목 ──────────────────────────────────────────────────────
+with tab_watchlist:
+    st.markdown("## ⭐ 나의 관심 종목")
+    st.caption("종목 코드를 추가하면 실시간 시세와 전문가 분석을 확인할 수 있습니다.")
+
+    # 세션 관리
+    if "watchlist" not in st.session_state:
+        st.session_state.watchlist = ["005930.KS", "NVDA", "TSLA"]
+
+    # 종목 추가 UI
+    col_add1, col_add2, col_add3 = st.columns([2, 2, 1])
+    with col_add1:
+        new_symbol = st.text_input("종목 코드 입력", placeholder="예: 005930.KS, AAPL, TSLA", key="wl_new_sym")
+    with col_add2:
+        st.markdown("")
+        st.markdown("")
+        st.caption("국내: 종목번호.KS (예: 005930.KS)\n미국: 티커 (예: AAPL)")
+    with col_add3:
+        st.markdown("")
+        st.markdown("")
+        if st.button("➕ 추가", use_container_width=True, key="wl_add_btn"):
+            sym = new_symbol.strip().upper()
+            if sym and sym not in st.session_state.watchlist:
+                st.session_state.watchlist.append(sym)
+                st.rerun()
+
+    # 관심 종목 삭제 UI
+    if st.session_state.watchlist:
+        remove_sym = st.multiselect("삭제할 종목 선택", st.session_state.watchlist, key="wl_remove")
+        if st.button("🗑️ 선택 종목 삭제", key="wl_remove_btn"):
+            st.session_state.watchlist = [s for s in st.session_state.watchlist if s not in remove_sym]
+            st.rerun()
+
+    st.markdown("---")
+
+    # 관심 종목 시세 표시
+    if st.session_state.watchlist:
+        st.markdown("### 📊 실시간 시세")
+        wl_cols = st.columns(min(len(st.session_state.watchlist), 4))
+        for i, sym in enumerate(st.session_state.watchlist):
+            with wl_cols[i % len(wl_cols)]:
+                d = fetch_stock_data(sym, period="5d")
+                if d.get("ok") and _is_valid_num(d.get("price")):
+                    is_kr = sym.endswith((".KS", ".KQ"))
+                    price_fmt = f"{d['price']:,.0f}" if is_kr else f"${d['price']:,.2f}"
+                    delta = f"{d['change']:+,.2f} ({d['change_pct']:+.2f}%)"
+                    st.metric(sym, price_fmt, delta=delta)
+                else:
+                    st.metric(sym, "N/A", help="데이터 로딩 실패")
+
+        # 관심 종목 차트
+        st.markdown("### 📈 관심 종목 차트")
+        wl_period = st.selectbox("차트 기간", ["5d", "1mo", "3mo", "6mo", "1y"], index=1, key="wl_period")
+        for sym in st.session_state.watchlist:
+            d = fetch_stock_data(sym, period=wl_period)
+            if d.get("ok") and d.get("history"):
+                st.markdown(f"**{sym}**")
+                df = pd.DataFrame(d["history"])
+                st.line_chart(df.set_index("Date")["Close"])
+
+        # 관심 종목 관련 뉴스
+        st.markdown("---")
+        st.markdown("### 📰 관심 종목 관련 뉴스")
+        wl_query = " ".join(st.session_state.watchlist[:5])
+        wl_news = fetch_news_search(f"주식 {wl_query} 시황", limit=5)
+        if wl_news:
+            for n in wl_news[:4]:
+                st.markdown(
+                    f"- **[{n['title']}]({n['link']})**  \n"
+                    f"  <small>{n.get('source', '')} | {n.get('published', '')}</small>",
+                    unsafe_allow_html=True,
+                )
+        else:
+            st.info("관련 뉴스를 가져오지 못했습니다.")
+    else:
+        st.info("관심 종목을 추가해 주세요.")
+
+# ── 탭 5: 전문가 분석 ────────────────────────────────────────────────────
 with tab_expert:
     st.markdown("## 📝 주식 전문가 분석")
 
@@ -255,7 +347,7 @@ with tab_expert:
             dates = pd.date_range(end=datetime.datetime.today(), periods=7).strftime('%m-%d').tolist()
 
             # 실시간 KOSPI 데이터 기반 트렌드
-            kospi = fetch_stock_data("^KS11", period="5d")
+            kospi = fetch_stock_data("069500.KS", period="5d")
             if kospi.get("ok") and kospi.get("history"):
                 values = [r["Close"] for r in kospi["history"][-7:]]
                 # 날짜 수 맞추기
@@ -283,9 +375,65 @@ with tab_expert:
         st.markdown(f"### 📈 최근 '{data['query']}' 트렌드")
         st.bar_chart(data["df"].set_index("Date"))
 
+        # ── 시장 심리 분석 ────────────────────────────────────────────
+        st.markdown("### 🧠 시장 심리 분석")
+        if data["news"]:
+            import re
+            from collections import Counter
+
+            pos_words = {
+                "상승", "급등", "호재", "성장", "개선", "회복", "활황", "강세",
+                "최고", "돌파", "증가", "확대", "호조", "긍정", "기대", "랠리",
+                "반등", "호황", "흑자", "신고가", "매수", "수혜",
+            }
+            neg_words = {
+                "하락", "급락", "악재", "위축", "감소", "둔화", "약세", "최저",
+                "폭락", "축소", "부진", "우려", "경고", "위기", "리스크", "적자",
+                "침체", "하방", "손실", "붕괴", "매도", "조정",
+            }
+            all_titles = " ".join(n.get("title", "") for n in data["news"])
+            words = re.findall(r"[가-힣]{2,}", all_titles)
+
+            pos_count = sum(1 for w in words if w in pos_words)
+            neg_count = sum(1 for w in words if w in neg_words)
+            total_s = pos_count + neg_count
+
+            if total_s == 0:
+                sentiment = "중립"
+                sentiment_score = 50
+            else:
+                sentiment_score = int(pos_count / total_s * 100)
+                if sentiment_score >= 60:
+                    sentiment = "긍정적 (매수 심리 우세)"
+                elif sentiment_score <= 40:
+                    sentiment = "부정적 (매도 심리 우세)"
+                else:
+                    sentiment = "혼조 (관망세)"
+
+            sentiment_icon = {"긍정적 (매수 심리 우세)": "🟢", "부정적 (매도 심리 우세)": "🔴",
+                              "혼조 (관망세)": "🟡", "중립": "⚪"}
+            m1, m2, m3, m4 = st.columns(4)
+            m1.metric("분석 기사 수", f"{len(data['news'])}건")
+            m2.metric("시장 심리", f"{sentiment_icon.get(sentiment, '⚪')} {sentiment}")
+            m3.metric("긍정/부정 비율", f"{pos_count}:{neg_count}")
+            m4.metric("심리 지수", f"{sentiment_score}/100")
+
+            # 핵심 키워드 빈도
+            stopwords = {"것으로", "에서", "관련", "대한", "위한", "으로", "이번",
+                         "오늘", "내일", "지난", "올해", "이후", "까지", "부터",
+                         "하는", "있는", "없는", "되는"}
+            filtered = [w for w in words if w not in stopwords]
+            word_freq = Counter(filtered).most_common(10)
+            if word_freq:
+                st.markdown("**핵심 키워드 빈도**")
+                kw_df = pd.DataFrame(word_freq, columns=["키워드", "빈도"])
+                st.bar_chart(kw_df.set_index("키워드"))
+
+        st.markdown("---")
+
         st.markdown("### 📰 핵심 관련 뉴스")
         if data["news"]:
-            for n in data["news"][:3]:
+            for n in data["news"][:5]:
                 st.markdown(
                     f"- **[{n['title']}]({n['link']})**  \n"
                     f"  <small>{n.get('source', '')} | {n.get('published', '')}</small>",
@@ -295,6 +443,43 @@ with tab_expert:
             st.info("관련 뉴스를 찾지 못했습니다.")
 
         st.markdown("---")
+
+        # ── 투자 분석 프레임워크 ──────────────────────────────────────
+        st.markdown("### 🎯 투자 분석 프레임워크")
+        fw1, fw2 = st.columns(2)
+        with fw1:
+            st.markdown("#### 📊 기본적 분석 체크포인트")
+            st.markdown("""
+- **거시경제**: 금리, 환율, 유가 변동 추이
+- **기업실적**: 분기 실적 발표 및 가이던스
+- **밸류에이션**: PER, PBR, ROE 비교
+- **수급 동향**: 외국인/기관 매매 동향
+- **정책 이벤트**: 통화정책, 재정정책 변화
+            """)
+        with fw2:
+            st.markdown("#### 📈 기술적 분석 체크포인트")
+            st.markdown("""
+- **추세**: 이동평균선(5/20/60/120일) 배열
+- **모멘텀**: RSI, MACD, 스토캐스틱
+- **거래량**: 거래량 이동평균 대비 수준
+- **지지/저항**: 주요 가격대 및 심리적 가격선
+- **패턴**: 캔들 패턴, 차트 패턴 확인
+            """)
+
+        st.markdown("#### ⚠️ 리스크 요인 점검")
+        r1, r2, r3 = st.columns(3)
+        with r1:
+            st.markdown("**글로벌 리스크**")
+            st.markdown("- 미국 금리 정책 변화\n- 지정학적 리스크\n- 글로벌 공급망 이슈")
+        with r2:
+            st.markdown("**국내 리스크**")
+            st.markdown("- 원/달러 환율 변동\n- 가계부채 수준\n- 부동산 시장 연동")
+        with r3:
+            st.markdown("**섹터 리스크**")
+            st.markdown("- 반도체 사이클 변동\n- AI/테크 밸류에이션\n- 규제 환경 변화")
+
+        st.markdown("---")
+
         st.markdown("### 🌐 웹 검색 결과 요약")
         if data["web"]:
             for w in data["web"][:3]:
@@ -308,42 +493,20 @@ with tab_expert:
 
         st.markdown("---")
         st.markdown("### 🎬 관련 영상")
-        from utils.expert_template import _render_video_card
-        import math as _math
+        from utils.expert_template import _render_paginated_videos
         if data.get("youtube"):
             videos = sorted(data["youtube"], key=lambda v: v.get("published", ""), reverse=True)
-            _per_page = 4
-            _total_pages = max(1, _math.ceil(len(videos) / _per_page))
-            _pk = "yt_stock_expert"
-            if _pk not in st.session_state:
-                st.session_state[_pk] = 0
-            _cp = st.session_state[_pk]
-            _s, _e = _cp * _per_page, min((_cp + 1) * _per_page, len(videos))
-            cols = st.columns(2)
-            for idx, v in enumerate(videos[_s:_e]):
-                with cols[idx % 2]:
-                    _render_video_card(v, show_desc=True)
-            if _total_pages > 1:
-                nav_cols = st.columns(_total_pages + 2)
-                with nav_cols[0]:
-                    if st.button("◀", key=f"{_pk}_prev", disabled=(_cp == 0)):
-                        st.session_state[_pk] = _cp - 1
-                        st.rerun()
-                for _p in range(_total_pages):
-                    with nav_cols[_p + 1]:
-                        _lbl = f"**[{_p+1}]**" if _p == _cp else f"{_p+1}"
-                        if st.button(_lbl, key=f"{_pk}_p{_p}"):
-                            st.session_state[_pk] = _p
-                            st.rerun()
-                with nav_cols[_total_pages + 1]:
-                    if st.button("▶", key=f"{_pk}_next", disabled=(_cp >= _total_pages - 1)):
-                        st.session_state[_pk] = _cp + 1
-                        st.rerun()
-                st.caption(f"페이지 {_cp + 1} / {_total_pages} (총 {len(videos)}건)")
+            _render_paginated_videos(videos, "yt_stock_expert")
         else:
             st.info("관련 영상을 찾지 못했습니다.")
 
         st.markdown("---")
+
+        st.warning(
+            "⚠️ 본 분석은 공개된 뉴스·데이터 기반 자동 수집 결과이며 투자 권유가 아닙니다. "
+            "투자 결정은 본인 판단과 책임하에 이루어져야 합니다."
+        )
+
         trend_records = []
         if isinstance(data.get("df"), pd.DataFrame) and not data["df"].empty:
             trend_records = data["df"].to_dict("records")

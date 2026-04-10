@@ -104,11 +104,50 @@ def _parse_view_count(vc) -> int:
         return 0
 
 
+def _show_empty_state(msg: str):
+    """데이터 없음 상태 + 재시도 안내."""
+    st.info(f"{msg} 상단 🔄 데이터 갱신 버튼을 눌러 다시 시도하세요.")
+
+
 _PLATFORM_ICONS = {
     "YouTube": "▶️", "Naver TV": "🟢", "Kakao": "💬",
     "TikTok": "🎵", "X": "🐦", "Instagram": "📸",
     "Facebook": "👤", "Vimeo": "🎬",
 }
+
+
+def _render_paginated_videos(videos: list[dict], page_key: str, per_page: int = 4):
+    """Shared helper: render paginated video grid with navigation."""
+    import math
+    total = len(videos)
+    total_pages = max(1, math.ceil(total / per_page))
+    if page_key not in st.session_state:
+        st.session_state[page_key] = 0
+    cp = st.session_state[page_key]
+    s, e = cp * per_page, min((cp + 1) * per_page, total)
+
+    cols = st.columns(2)
+    for idx, v in enumerate(videos[s:e]):
+        with cols[idx % 2]:
+            _render_video_card(v, show_desc=True)
+
+    if total_pages > 1:
+        nav_cols = st.columns(total_pages + 2)
+        with nav_cols[0]:
+            if st.button("◀", key=f"{page_key}_prev", disabled=(cp == 0)):
+                st.session_state[page_key] = cp - 1
+                st.rerun()
+        for p in range(total_pages):
+            with nav_cols[p + 1]:
+                label = f"**[{p+1}]**" if p == cp else f"{p+1}"
+                if st.button(label, key=f"{page_key}_p{p}"):
+                    st.session_state[page_key] = p
+                    st.rerun()
+        with nav_cols[total_pages + 1]:
+            if st.button("▶", key=f"{page_key}_next", disabled=(cp >= total_pages - 1)):
+                st.session_state[page_key] = cp + 1
+                st.rerun()
+        st.caption(f"페이지 {cp + 1} / {total_pages} (총 {total}건)")
 
 
 def _render_video_card(v: dict, show_desc: bool = False):
@@ -160,7 +199,7 @@ def render_youtube_section(query: str, limit: int = 12, per_page: int = 4,
     _tl = "d" if sort == "latest" else None
     videos = fetch_youtube_search(query, limit=limit, timelimit=_tl)
     if not videos:
-        st.info("관련 영상을 찾지 못했습니다.")
+        _show_empty_state("관련 영상을 찾지 못했습니다.")
         return []
 
     # Sort toggle checkbox
@@ -190,42 +229,9 @@ def render_youtube_section(query: str, limit: int = 12, per_page: int = 4,
     channels = set(v.get("uploader", "") for v in videos_sorted if v.get("uploader"))
     mc3.metric("채널 수", f"{len(channels)}개")
 
-    # Pagination
-    import math
-    total_pages = max(1, math.ceil(total / per_page))
+    # Pagination (공통 헬퍼 사용)
     page_key = f"yt_page_{query[:20]}"
-    if page_key not in st.session_state:
-        st.session_state[page_key] = 0
-
-    current_page = st.session_state[page_key]
-    start = current_page * per_page
-    end = min(start + per_page, total)
-    page_videos = videos_sorted[start:end]
-
-    # Render current page videos
-    cols = st.columns(2)
-    for idx, v in enumerate(page_videos):
-        with cols[idx % 2]:
-            _render_video_card(v, show_desc=True)
-
-    # Page navigation buttons
-    if total_pages > 1:
-        nav_cols = st.columns(total_pages + 2)
-        with nav_cols[0]:
-            if st.button("◀", key=f"{page_key}_prev", disabled=(current_page == 0)):
-                st.session_state[page_key] = current_page - 1
-                st.rerun()
-        for p in range(total_pages):
-            with nav_cols[p + 1]:
-                label = f"**[{p+1}]**" if p == current_page else f"{p+1}"
-                if st.button(label, key=f"{page_key}_p{p}"):
-                    st.session_state[page_key] = p
-                    st.rerun()
-        with nav_cols[total_pages + 1]:
-            if st.button("▶", key=f"{page_key}_next", disabled=(current_page >= total_pages - 1)):
-                st.session_state[page_key] = current_page + 1
-                st.rerun()
-        st.caption(f"페이지 {current_page + 1} / {total_pages} (총 {total}건)")
+    _render_paginated_videos(videos_sorted, page_key, per_page)
 
     return videos_sorted
 
@@ -252,6 +258,45 @@ def render_expert_page(
         sub_topics: [(tab_icon, tab_name, search_query), ...] for categorized news tabs
     """
     st.title(f"{icon} {title} 전문가")
+
+    # ── 페이지 설명 + 갱신 컨트롤 ─────────────────────────────────────────
+    _desc_map = {
+        "생활금융": "재테크·저축·금리·투자 트렌드를 실시간으로 확인하세요.",
+        "건강": "헬스케어·의약품·운동·정신건강 최신 동향을 제공합니다.",
+        "식생활": "외식·맛집·요리·식품 트렌드와 가격 동향을 분석합니다.",
+        "부동산": "아파트·청약·전세·매매 시장 동향을 실시간 모니터링합니다.",
+        "교육": "입시·에듀테크·교육 정책 최신 동향을 확인하세요.",
+        "여행": "국내외 여행지·항공권·호텔 트렌드를 제공합니다.",
+        "생활법률": "생활 속 법률·판례·규정 변경 사항을 확인하세요.",
+        "쇼핑/소비": "온라인 쇼핑·소비 트렌드·할인 정보를 분석합니다.",
+        "육아/보육": "육아·보육 정책·용품 트렌드를 확인하세요.",
+        "문화/예술": "전시·공연·K-문화 최신 동향을 제공합니다.",
+        "반려동물": "반려동물·사료·펫 헬스케어 트렌드를 분석합니다.",
+        "화훼/식물": "플랜테리어·다육식물·화훼 트렌드를 확인하세요.",
+        "환율유가": "달러·엔화·유가 실시간 동향을 모니터링합니다.",
+        "관세/무역": "수출입·관세·무역 동향을 분석합니다.",
+        "사업/창업": "스타트업·창업 지원·비즈니스 트렌드를 확인하세요.",
+        "운송/물류": "물류·해운·항공 운송 동향을 분석합니다.",
+        "해외 분쟁/전쟁": "글로벌 분쟁·안보 상황을 실시간 확인합니다.",
+        "IT/테크": "AI·반도체·클라우드·IT 기술 최신 동향을 제공합니다.",
+        "취업/채용": "채용·취업 시장·자격증·직업 전망을 분석합니다.",
+    }
+    desc = _desc_map.get(title, f"{title} 관련 최신 동향을 AI 전문가가 분석합니다.")
+    st.caption(desc)
+
+    col_r, col_t = st.columns([1, 3])
+    with col_r:
+        if st.button("🔄 데이터 갱신", type="primary", key=f"refresh_{title}"):
+            fetch_news_search.clear()
+            fetch_web_search.clear()
+            fetch_youtube_search.clear()
+            if tickers:
+                from utils.data_fetcher import fetch_stock_data as _fsd
+                _fsd.clear()
+            st.rerun()
+    with col_t:
+        st.caption(f"마지막 갱신: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')} (자동 캐시 적용)")
+
     st.markdown("---")
 
     # ── 실시간 모니터링 (tickers) ─────────────────────────────────────────
@@ -303,7 +348,7 @@ def render_expert_page(
                     # 카테고리별 경향 분석
                     _render_news_trends(news, tab_name)
                 else:
-                    st.info(f"{tab_name} 관련 뉴스를 가져오지 못했습니다.")
+                    _show_empty_state(f"{tab_name} 관련 뉴스를 가져오지 못했습니다.")
         st.markdown("---")
 
     # ── 자동 뉴스 로딩 + 경향 분석 ──────────────────────────────────────
@@ -320,7 +365,7 @@ def render_expert_page(
             # 뉴스 경향 분석
             _render_news_trends(auto_news, title)
         else:
-            st.info(f"{title} 관련 뉴스를 가져오지 못했습니다.")
+            _show_empty_state(f"{title} 관련 뉴스를 가져오지 못했습니다.")
         st.markdown("---")
 
     # ── 전문가 검색 & 분석 ────────────────────────────────────────────────
@@ -345,10 +390,10 @@ def render_expert_page(
 
             # Determine best ticker for real trend data
             _proxy_map = {
-                "주식": "^KS11", "코스피": "^KS11", "코스닥": "^KQ11",
-                "환율": "KRW=X", "관세": "^KS11", "무역": "^KS11",
-                "금융": "^KS11", "부동산": "^KS11", "유가": "CL=F",
-                "운송": "BZ=F", "사업": "^KS11",
+                "주식": "069500.KS", "코스피": "069500.KS", "코스닥": "229200.KS",
+                "환율": "KRW=X", "관세": "069500.KS", "무역": "069500.KS",
+                "금융": "069500.KS", "부동산": "069500.KS", "유가": "CL=F",
+                "운송": "BZ=F", "사업": "069500.KS",
             }
 
             target_sym = None
@@ -360,7 +405,7 @@ def render_expert_page(
                         target_sym = sym
                         break
                 if not target_sym:
-                    target_sym = "^KS11"  # Default: KOSPI
+                    target_sym = "069500.KS"  # Default: KOSPI
 
             td = _fsd(target_sym, period="7d")
             if td.get("ok") and td.get("history"):
@@ -369,7 +414,7 @@ def render_expert_page(
                 values = [r["Close"] for r in hist]
             else:
                 # Fallback: use 5d data
-                td2 = _fsd("^KS11", period="5d")
+                td2 = _fsd("069500.KS", period="5d")
                 if td2.get("ok") and td2.get("history"):
                     hist = td2["history"]
                     dates = [r.get("Date", "") for r in hist]
@@ -409,7 +454,7 @@ def render_expert_page(
             # 검색 결과 경향 분석
             _render_news_trends(data["news"], data["query"])
         else:
-            st.info("관련 뉴스를 찾지 못했습니다.")
+            _show_empty_state("관련 뉴스를 찾지 못했습니다.")
 
         st.markdown("---")
         st.markdown("### 🌐 웹 검색 결과 요약")
@@ -421,46 +466,18 @@ def render_expert_page(
                     unsafe_allow_html=True,
                 )
         else:
-            st.info("관련 웹 검색 결과를 찾지 못했습니다.")
+            _show_empty_state("관련 웹 검색 결과를 찾지 못했습니다.")
 
         st.markdown("---")
         st.markdown(f"### 🎬 관련 영상")
         if data.get("youtube"):
-            import math as _math
             if youtube_sort == "latest":
                 videos = sorted(data["youtube"], key=lambda v: v.get("published", ""), reverse=True)
             else:
                 videos = sorted(data["youtube"], key=lambda v: _parse_view_count(v.get("view_count")), reverse=True)
-            _per_page = 4
-            _total_pages = max(1, _math.ceil(len(videos) / _per_page))
-            _pk = f"yt_ep_{title}"
-            if _pk not in st.session_state:
-                st.session_state[_pk] = 0
-            _cp = st.session_state[_pk]
-            _s, _e = _cp * _per_page, min((_cp + 1) * _per_page, len(videos))
-            cols = st.columns(2)
-            for idx, v in enumerate(videos[_s:_e]):
-                with cols[idx % 2]:
-                    _render_video_card(v, show_desc=True)
-            if _total_pages > 1:
-                nav_cols = st.columns(_total_pages + 2)
-                with nav_cols[0]:
-                    if st.button("◀", key=f"{_pk}_prev", disabled=(_cp == 0)):
-                        st.session_state[_pk] = _cp - 1
-                        st.rerun()
-                for _p in range(_total_pages):
-                    with nav_cols[_p + 1]:
-                        _lbl = f"**[{_p+1}]**" if _p == _cp else f"{_p+1}"
-                        if st.button(_lbl, key=f"{_pk}_p{_p}"):
-                            st.session_state[_pk] = _p
-                            st.rerun()
-                with nav_cols[_total_pages + 1]:
-                    if st.button("▶", key=f"{_pk}_next", disabled=(_cp >= _total_pages - 1)):
-                        st.session_state[_pk] = _cp + 1
-                        st.rerun()
-                st.caption(f"페이지 {_cp + 1} / {_total_pages} (총 {len(videos)}건)")
+            _render_paginated_videos(videos, f"yt_ep_{title}")
         else:
-            st.info("관련 영상을 찾지 못했습니다.")
+            _show_empty_state("관련 영상을 찾지 못했습니다.")
 
         st.markdown("---")
 

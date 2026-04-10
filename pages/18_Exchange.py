@@ -19,7 +19,11 @@ st.markdown("---")
 col_r, col_t = st.columns([1, 3])
 with col_r:
     if st.button("🔄 데이터 갱신", type="primary"):
-        st.cache_data.clear()
+        fetch_exchange_rates.clear()
+        fetch_stock_data.clear()
+        fetch_news_search.clear()
+        fetch_web_search.clear()
+        fetch_youtube_search.clear()
         st.rerun()
 with col_t:
     st.caption(f"마지막 갱신: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')} (5분 자동 캐시)")
@@ -94,10 +98,13 @@ OIL_INDICES = {
 with tab_oil:
     st.markdown("## 🛢️ 국제 유가·에너지 실시간 시세")
 
+    # 유가 데이터 1회 fetch → 재활용
+    _oil_data = {sym: fetch_stock_data(sym, period="5d") for sym in OIL_INDICES}
+
     oil_cols = st.columns(len(OIL_INDICES))
     for col, (symbol, (name, icon)) in zip(oil_cols, OIL_INDICES.items()):
         with col:
-            data = fetch_stock_data(symbol, period="5d")
+            data = _oil_data[symbol]
             if data.get("ok"):
                 delta_str = f"{data['change']:+.2f} ({data['change_pct']:+.2f}%)"
                 col.metric(f"{icon} {name}", f"${data['price']:,.2f}", delta=delta_str)

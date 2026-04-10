@@ -36,7 +36,10 @@ st.title("⛽ 유가 & 환율 실시간 모니터링")
 st.markdown("---")
 
 if st.button("🔄 데이터 갱신", type="primary"):
-    st.cache_data.clear()
+    fetch_exchange_rates.clear()
+    fetch_stock_data.clear()
+    fetch_news_search.clear()
+    fetch_youtube_search.clear()
     st.rerun()
 
 st.caption(f"마지막 갱신: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')} (5분 자동 캐시)")
@@ -94,11 +97,14 @@ st.markdown("---")
 # ═════════════════════════════════════════════════════════
 st.markdown("## 🛢️ 국제 유가·에너지 실시간 시세")
 
+# 유가 데이터 1회 fetch → 전체 재활용
+oil_data = {symbol: fetch_stock_data(symbol, period="5d") for symbol in OIL_FUTURES}
+
 # 메트릭 카드 (현재가 + 등락)
 oil_cols = st.columns(len(OIL_FUTURES))
 for col, (symbol, (name, icon)) in zip(oil_cols, OIL_FUTURES.items()):
     with col:
-        d = fetch_stock_data(symbol, period="5d")
+        d = oil_data[symbol]
         if d.get("ok"):
             delta_str = f"{d['change']:+.2f} ({d['change_pct']:+.2f}%)"
             col.metric(f"{icon} {name}", f"${d['price']:,.2f}", delta=delta_str)
@@ -187,7 +193,7 @@ _yt_oil = render_youtube_section("유가 환율 경제 분석", sort="latest")
 st.markdown("---")
 oil_dl_data = []
 for symbol, (name, icon) in OIL_FUTURES.items():
-    d = fetch_stock_data(symbol, period="5d")
+    d = oil_data[symbol]
     if d.get("ok"):
         oil_dl_data.append({"항목": name, "현재가": d["price"], "전일비": d["change"], "등락률": f"{d['change_pct']}%"})
 

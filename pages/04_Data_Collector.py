@@ -131,66 +131,73 @@ with st.expander("검색어 상세 보기", expanded=False):
 
 st.caption(f"✅ 사용자 검색어 {sum(1 for e in EXPERT_DEFAULTS if st.session_state.get(e['state_key']))}개 / ⬜ 기본값 {sum(1 for e in EXPERT_DEFAULTS if not st.session_state.get(e['state_key']))}개")
 
+def _collect_single_expert(expert: dict, session_data: dict | None) -> dict:
+    """단일 전문가 데이터 수집 (병렬 실행용)."""
+    if session_data and session_data.get("query"):
+        query = session_data["query"]
+        news_res = session_data.get("news") or fetch_news_search(query, limit=5)
+        web_res = session_data.get("web") or fetch_web_search(query, limit=5)
+        if session_data.get("df") is not None:
+            df_data = session_data["df"]
+            df_records = df_data.to_dict("records") if isinstance(df_data, pd.DataFrame) else df_data
+        else:
+            dates = pd.date_range(end=datetime.datetime.today(), periods=7).strftime('%m-%d').tolist()
+            base_val = hash(query) % 50 + 20
+            df_records = [{"Date": d, "Trend": base_val + (hash(query + d) % 30)} for d in dates]
+    else:
+        query = expert["default_query"]
+        web_res = fetch_web_search(query, limit=5)
+        news_res = fetch_news_search(query, limit=5)
+        dates = pd.date_range(end=datetime.datetime.today(), periods=7).strftime('%m-%d').tolist()
+        if "주식" in expert["name"] or "코스피" in query:
+            values = [6020, 6080, 5010, 4950, 5100, 5150, 5200]
+        elif "환율" in expert["name"]:
+            values = [1350, 1345, 1420, 1450, 1435, 1440, 1445]
+        elif "관세" in expert["name"] or "무역" in expert["name"]:
+            values = [100, 95, 80, 75, 78, 70, 68]
+        else:
+            base_val = hash(query) % 50 + 20
+            values = [base_val + (hash(query + d) % 30) for d in dates]
+        df_records = [{"Date": d, "Trend": v} for d, v in zip(dates, values)]
+
+    return {"expert": expert["name"], "query": query, "news": news_res, "web": web_res, "df": df_records}
+
+
 if st.button("전 분야 마스터 리포트 생성 시작", type="primary", use_container_width=True):
-    master_context_list = []
+    st.session_state.pop("master_report_data", None)  # 이전 결과 초기화
+    from concurrent.futures import ThreadPoolExecutor, as_completed
 
     progress_bar = st.progress(0)
     status_text = st.empty()
+    status_text.text("전 분야 병렬 수집 시작...")
 
-    for i, expert in enumerate(EXPERT_DEFAULTS):
-        # 이전 페이지에서 검색한 데이터가 있으면 재활용
-        prev_data = st.session_state.get(expert["state_key"]) if expert["state_key"] else None
+    # 세션 데이터를 미리 추출 (스레드 안전)
+    expert_sessions = []
+    for exp in EXPERT_DEFAULTS:
+        prev = st.session_state.get(exp["state_key"]) if exp["state_key"] else None
+        expert_sessions.append((exp, prev))
 
-        if prev_data and prev_data.get("query"):
-            query = prev_data["query"]
-            status_text.text(f"수집 중: [{expert['name']}] 기존 검색 데이터 활용 ({i+1}/{len(EXPERT_DEFAULTS)})")
+    master_context_list = [None] * len(EXPERT_DEFAULTS)
 
-            # 이미 수집된 데이터가 있으면 news/web 재활용, 없으면 새로 수집
-            news_res = prev_data.get("news") or fetch_news_search(query, limit=5)
-            web_res = prev_data.get("web") or fetch_web_search(query, limit=5)
-
-            # 기존 df가 있으면 재활용
-            if prev_data.get("df") is not None:
-                df_data = prev_data["df"]
-                if isinstance(df_data, pd.DataFrame):
-                    df_records = df_data.to_dict("records")
-                else:
-                    df_records = df_data  # already list of dicts
-            else:
-                dates = pd.date_range(end=datetime.datetime.today(), periods=7).strftime('%m-%d').tolist()
-                base_val = hash(query) % 50 + 20
-                values = [base_val + (hash(query + d) % 30) for d in dates]
-                df_records = [{"Date": d, "Trend": v} for d, v in zip(dates, values)]
-        else:
-            query = expert["default_query"]
-            status_text.text(f"수집 중: [{expert['name']}] 기본 검색어로 수집... ({i+1}/{len(EXPERT_DEFAULTS)})")
-
-            web_res = fetch_web_search(query, limit=5)
-            news_res = fetch_news_search(query, limit=5)
-
-            dates = pd.date_range(end=datetime.datetime.today(), periods=7).strftime('%m-%d').tolist()
-
-            if "주식" in expert["name"] or "코스피" in query:
-                values = [6020, 6080, 5010, 4950, 5100, 5150, 5200]
-            elif "환율" in expert["name"]:
-                values = [1350, 1345, 1420, 1450, 1435, 1440, 1445]
-            elif "관세" in expert["name"] or "무역" in expert["name"]:
-                values = [100, 95, 80, 75, 78, 70, 68]
-            else:
-                base_val = hash(query) % 50 + 20
-                values = [base_val + (hash(query + d) % 30) for d in dates]
-
-            df_records = [{"Date": d, "Trend": v} for d, v in zip(dates, values)]
-
-        ctx = {
-            "expert": expert["name"],
-            "query": query,
-            "news": news_res,
-            "web": web_res,
-            "df": df_records
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        futures = {
+            executor.submit(_collect_single_expert, exp, sess): i
+            for i, (exp, sess) in enumerate(expert_sessions)
         }
-        master_context_list.append(ctx)
-        progress_bar.progress((i + 1) / len(EXPERT_DEFAULTS))
+        done_count = 0
+        for future in as_completed(futures):
+            idx = futures[future]
+            try:
+                master_context_list[idx] = future.result()
+            except Exception:
+                master_context_list[idx] = {
+                    "expert": EXPERT_DEFAULTS[idx]["name"],
+                    "query": EXPERT_DEFAULTS[idx]["default_query"],
+                    "news": [], "web": [], "df": [],
+                }
+            done_count += 1
+            status_text.text(f"수집 완료: [{EXPERT_DEFAULTS[idx]['name']}] ({done_count}/{len(EXPERT_DEFAULTS)})")
+            progress_bar.progress(done_count / len(EXPERT_DEFAULTS))
 
     st.session_state["master_report_data"] = master_context_list
 

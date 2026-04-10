@@ -8,6 +8,21 @@ from typing import Optional
 import streamlit as st
 from utils.config import IS_API_MODE, API_BASE_URL
 
+# 외부 의존성 모듈 레벨 import (lazy: 실패 시 None)
+try:
+    from ddgs import DDGS as _DDGS
+except ImportError:
+    _DDGS = None  # type: ignore
+
+try:
+    import yfinance as _yf
+except ImportError:
+    _yf = None  # type: ignore
+
+# ── 사전 컴파일 정규식 ────────────────────────────────────────────────────────
+_PUNCT_RE = re.compile(r"[^\w\s]")
+_SPACE_RE = re.compile(r"\s+")
+
 # ── 분야별 제외 키워드 (교차 오염 방지) ──────────────────────────────────────
 DOMAIN_EXCLUDE_KEYWORDS = {
     "부동산": ["여행", "관광", "항공권", "호캉스", "맛집", "주식", "코스피", "나스닥", "증시"],
@@ -26,24 +41,25 @@ DOMAIN_EXCLUDE_KEYWORDS = {
 }
 
 
+_DOMAIN_KEYWORDS = {
+    "부동산": ["부동산", "아파트", "청약", "전세", "매매", "리츠"],
+    "주식": ["주식", "코스피", "코스닥", "증시", "나스닥", "S&P", "시황"],
+    "주식 분석": ["주식", "코스피", "코스닥", "증시", "나스닥", "S&P", "시황"],
+    "여행": ["여행", "관광", "호캉스", "항공권", "명소"],
+    "생활금융": ["재테크", "저축", "금리", "생활금융"],
+    "식생활": ["외식", "맛집", "요리", "식생활"],
+    "건강": ["헬스케어", "메디컬", "건강"],
+    "교육": ["에듀테크", "입시", "교육"],
+    "생활법률": ["법률", "판례", "대법원"],
+    "환율": ["환율", "달러", "엔화"],
+    "관세": ["관세", "수출입", "무역"],
+    "IT": ["AI", "반도체", "스마트폰", "IT", "클라우드", "사이버보안"],
+    "취업": ["채용", "취업", "자격증", "구인", "이직", "면접"],
+}
+
 def _detect_domain(query: str) -> str:
     """검색 쿼리에서 도메인을 감지하여 제외 키워드 매핑."""
-    domain_keywords = {
-        "부동산": ["부동산", "아파트", "청약", "전세", "매매", "리츠"],
-        "주식": ["주식", "코스피", "코스닥", "증시", "나스닥", "S&P", "시황"],
-        "주식 분석": ["주식", "코스피", "코스닥", "증시", "나스닥", "S&P", "시황"],
-        "여행": ["여행", "관광", "호캉스", "항공권", "명소"],
-        "생활금융": ["재테크", "저축", "금리", "생활금융"],
-        "식생활": ["외식", "맛집", "요리", "식생활"],
-        "건강": ["헬스케어", "메디컬", "건강"],
-        "교육": ["에듀테크", "입시", "교육"],
-        "생활법률": ["법률", "판례", "대법원"],
-        "환율": ["환율", "달러", "엔화"],
-        "관세": ["관세", "수출입", "무역"],
-        "IT": ["AI", "반도체", "스마트폰", "IT", "클라우드", "사이버보안"],
-        "취업": ["채용", "취업", "자격증", "구인", "이직", "면접"],
-    }
-    for domain, keywords in domain_keywords.items():
+    for domain, keywords in _DOMAIN_KEYWORDS.items():
         for kw in keywords:
             if kw in query:
                 return domain
@@ -64,32 +80,26 @@ def _filter_by_domain(items: list[dict], domain: str, title_key: str = "title") 
 
 
 def _deduplicate_news(items: list[dict], title_key: str = "title") -> list[dict]:
-    """제목 유사도 기반 중복 기사 제거. 정규화 후 80% 이상 겹치면 중복 처리."""
+    """제목 기반 중복 기사 제거. 정규화된 키워드 frozenset 해시로 O(n) 처리."""
     if not items:
         return items
 
-    def _normalize(text: str) -> set:
-        text = re.sub(r"[^\w\s]", "", text)
-        return set(text.split())
+    def _normalize_key(text: str) -> frozenset:
+        text = _PUNCT_RE.sub("", text)
+        words = sorted(text.split())
+        # 주요 키워드(상위 5개)만 비교하여 유사 제목 그룹핑
+        return frozenset(words[:5]) if len(words) > 5 else frozenset(words)
 
-    seen: list[set] = []
+    seen: set[frozenset] = set()
     unique: list[dict] = []
     for item in items:
         title = item.get(title_key, "")
-        words = _normalize(title)
-        if not words:
+        key = _normalize_key(title)
+        if not key:
             unique.append(item)
             continue
-        is_dup = False
-        for prev_words in seen:
-            if not prev_words:
-                continue
-            overlap = len(words & prev_words) / min(len(words), len(prev_words))
-            if overlap >= 0.8:
-                is_dup = True
-                break
-        if not is_dup:
-            seen.append(words)
+        if key not in seen:
+            seen.add(key)
             unique.append(item)
     return unique
 
@@ -281,8 +291,9 @@ def _fetch_news_local(category: str, limit: int) -> list[dict]:
 def _fetch_traffic_local() -> list[dict]:
     """Fetch real-time traffic news via DDG news search."""
     try:
-        from ddgs import DDGS
-        with DDGS() as ddgs:
+        if not _DDGS:
+            return []
+        with _DDGS() as ddgs:
             results = list(ddgs.news("고속도로 교통 도로 상황", region="kr-kr", max_results=8))
         items = []
         for r in results:
@@ -313,7 +324,7 @@ def _fetch_traffic_local() -> list[dict]:
                 "snippet": body[:120] if body else "",
             })
         if items:
-            return items
+            return _deduplicate_news(items, title_key="title")
     except Exception:
         pass
     return []
@@ -409,8 +420,9 @@ def _is_similar(text1: str, text2: str, threshold: float = 0.6) -> bool:
 def _fetch_news_ddg(query: str, limit: int = 10) -> list[dict]:
     """Fetch news via DuckDuckGo — provides real article snippets."""
     try:
-        from ddgs import DDGS
-        with DDGS() as ddgs:
+        if not _DDGS:
+            return []
+        with _DDGS() as ddgs:
             results = list(ddgs.news(query, region="kr-kr", max_results=limit))
         items = []
         for r in results:
@@ -467,8 +479,9 @@ def _fetch_news_rss(query: str, limit: int = 10) -> list[dict]:
 def _fetch_web_ddg(query: str, limit: int = 10) -> list[dict]:
     """Fetch web results via DuckDuckGo — provides real snippets."""
     try:
-        from ddgs import DDGS
-        with DDGS() as ddgs:
+        if not _DDGS:
+            return []
+        with _DDGS() as ddgs:
             results = list(ddgs.text(query, region="kr-kr", max_results=limit))
         items = []
         for r in results:
@@ -489,6 +502,7 @@ def _fetch_web_ddg(query: str, limit: int = 10) -> list[dict]:
         return []
 
 
+@st.cache_data(ttl=900, show_spinner=False)
 def fetch_web_search(query: str, limit: int = 10) -> list[dict]:
     """Fetch web search results. DuckDuckGo first, then RSS fallback."""
     results = []
@@ -525,28 +539,60 @@ def fetch_exchange_rates() -> dict:
 
 
 @st.cache_data(ttl=300, show_spinner=False)
+def fetch_kr_index(code: str = "KOSPI") -> dict:
+    """네이버 금융 API로 한국 지수(KOSPI/KOSDAQ) 실시간 데이터 조회."""
+    try:
+        url = f"https://m.stock.naver.com/api/index/{code}/basic"
+        r = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=8)
+        r.raise_for_status()
+        d = r.json()
+        price = float(d.get("closePrice", "0").replace(",", ""))
+        change = float(d.get("compareToPreviousClosePrice", "0").replace(",", ""))
+        change_pct = float(d.get("fluctuationsRatio", "0").replace(",", ""))
+        return {
+            "name": code, "symbol": code,
+            "price": round(price, 2),
+            "change": round(change, 2),
+            "change_pct": round(change_pct, 2),
+            "high": price, "low": price, "volume": 0,
+            "history": [], "ok": True,
+            "updated": datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
+        }
+    except Exception:
+        return {"symbol": code, "ok": False}
+
+
+@st.cache_data(ttl=300, show_spinner=False)
 def fetch_stock_data(symbol: str, period: str = "5d") -> dict:
     """Fetch stock/index data via yfinance (free, no key).
     Returns: {name, symbol, price, change, change_pct, history, ok}
     """
-    import time as _time
+    import math
+    if not _yf:
+        return {"symbol": symbol, "ok": False, "error": "yfinance not installed"}
     for attempt in range(2):
         try:
-            import yfinance as yf
-            ticker = yf.Ticker(symbol)
+            ticker = _yf.Ticker(symbol)
             hist = ticker.history(period=period)
-            hist = hist.dropna(subset=["Close"])
+            # NaN 행 완전 제거 (Close 기준)
+            if "Close" in hist.columns:
+                hist = hist[hist["Close"].notna() & hist["Close"].apply(lambda x: not math.isnan(x) if isinstance(x, float) else True)]
             # NaN 잔여 컬럼도 정리
             for col in ["High", "Low", "Volume"]:
                 if col in hist.columns:
                     hist[col] = hist[col].fillna(0)
             if hist.empty:
                 if attempt == 0:
-                    _time.sleep(0.5)
                     continue
                 return {"symbol": symbol, "ok": False}
             last_close = float(hist["Close"].iloc[-1])
+            if math.isnan(last_close):
+                if attempt == 0:
+                    continue
+                return {"symbol": symbol, "ok": False}
             prev_close = float(hist["Close"].iloc[-2]) if len(hist) >= 2 else last_close
+            if math.isnan(prev_close):
+                prev_close = last_close
             change = last_close - prev_close
             change_pct = (change / prev_close * 100) if prev_close else 0
             hist_records = []
@@ -557,6 +603,9 @@ def fetch_stock_data(symbol: str, period: str = "5d") -> dict:
                     "Close": round(float(row["Close"]), 2),
                     "Volume": int(vol) if vol else 0,
                 })
+            high_val = round(float(hist["High"].max()), 2) if "High" in hist.columns and not hist["High"].isna().all() else last_close
+            low_val = round(float(hist["Low"].min()), 2) if "Low" in hist.columns and not hist["Low"].isna().all() else last_close
+            last_vol = hist["Volume"].iloc[-1] if "Volume" in hist.columns else 0
             return {
                 "name": symbol,
                 "symbol": symbol,
@@ -564,17 +613,16 @@ def fetch_stock_data(symbol: str, period: str = "5d") -> dict:
                 "prev_close": round(prev_close, 2),
                 "change": round(change, 2),
                 "change_pct": round(change_pct, 2),
-                "high": round(float(hist["High"].max()), 2),
-                "low": round(float(hist["Low"].min()), 2),
-                "volume": int(hist["Volume"].iloc[-1]) if hist["Volume"].iloc[-1] else 0,
+                "high": high_val,
+                "low": low_val,
+                "volume": int(last_vol) if last_vol else 0,
                 "history": hist_records,
                 "updated": datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
                 "ok": True,
             }
         except Exception as e:
             if attempt == 0:
-                _time.sleep(0.5)
-                continue
+                continue  # sleep 제거 — 즉시 재시도
             return {"symbol": symbol, "ok": False, "error": str(e)}
     return {"symbol": symbol, "ok": False}
 
@@ -798,7 +846,8 @@ def _yt_search_ddg(query: str, limit: int, youtube_only: bool = False,
     Args:
         timelimit: "d" (day), "w" (week), "m" (month), None (all time)
     """
-    from ddgs import DDGS
+    if not _DDGS:
+        return []
     results = []
     # 시간 범위를 점진적으로 넓혀가며 검색 (d → w → m → None)
     _time_order = []
@@ -813,7 +862,7 @@ def _yt_search_ddg(query: str, limit: int, youtube_only: bool = False,
 
     for tl in _time_order:
         try:
-            with DDGS() as ddgs:
+            with _DDGS() as ddgs:
                 kwargs = {"region": "kr-kr", "max_results": limit + 10}
                 if tl:
                     kwargs["timelimit"] = tl
@@ -929,6 +978,7 @@ def fetch_youtube_search(query: str, limit: int = 12, timelimit: str | None = No
     return []
 
 
+@st.cache_data(ttl=900, show_spinner=False)
 def fetch_news_search(query: str, limit: int = 10) -> list[dict]:
     """Fetch news search results. DuckDuckGo first (better snippets), then RSS fallback."""
     news = []
