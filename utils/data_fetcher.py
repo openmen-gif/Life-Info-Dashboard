@@ -349,15 +349,15 @@ def fetch_weather(city: str = "Seoul", api_key: Optional[str] = None) -> dict:
     return _fetch_weather_local(eng_city, api_key)
 
 _NEWS_CAT_QUERY = {
-    "종합": "오늘 뉴스 주요 속보",
-    "IT/과학": "IT 과학 기술 뉴스",
-    "경제": "경제 금융 주식 뉴스",
-    "생활": "생활 사회 뉴스",
+    "종합": "오늘 주요뉴스 시사 사회 정치",
+    "IT/과학": "IT 과학 기술 AI 반도체 뉴스",
+    "경제": "경제 금융 증시 환율 뉴스",
+    "생활": "생활 사회 날씨 건강 뉴스",
 }
 
-@st.cache_data(ttl=1800, show_spinner=False)
+@st.cache_data(ttl=900, show_spinner=False)
 def fetch_news(category: str = "종합", limit: int = 10) -> list[dict]:
-    """Fetch news: DDG (1순위, HF 안정) → Google RSS (2순위) → RSS 검색 (3순위)."""
+    """Fetch news: DDG + Google RSS 병합 (부족하면 보충)."""
     if IS_API_MODE:
         try:
             r = requests.get(f"{API_BASE_URL}/data/news", params={"category": category, "limit": limit}, timeout=5)
@@ -368,19 +368,28 @@ def fetch_news(category: str = "종합", limit: int = 10) -> list[dict]:
         except Exception:
             pass
 
-    # 1순위: DDG 뉴스 (HF Spaces에서 가장 안정적)
     query = _NEWS_CAT_QUERY.get(category, "오늘 주요 뉴스")
-    result = _fetch_news_ddg(query, limit=limit)
+    result = []
 
-    # 2순위: Google News RSS (User-Agent 포함)
-    if not result:
-        result = _fetch_news_local(category, limit)
+    # 1순위: DDG 뉴스
+    result = _fetch_news_ddg(query, limit=limit, timelimit="d")
 
-    # 3순위: Google RSS 검색
-    if not result:
-        result = _fetch_news_rss(query, limit=limit)
+    # 부족하면 1주일로 재시도
+    if len(result) < limit:
+        more = _fetch_news_ddg(query, limit=limit, timelimit="w")
+        result = _deduplicate_news(result + more)
 
-    return _deduplicate_news(result)
+    # 2순위: Google News RSS 보충
+    if len(result) < limit:
+        rss = _fetch_news_local(category, limit)
+        result = _deduplicate_news(result + rss)
+
+    # 3순위: Google RSS 검색 보충
+    if len(result) < limit:
+        rss2 = _fetch_news_rss(query, limit=limit)
+        result = _deduplicate_news(result + rss2)
+
+    return result[:limit]
 
 @st.cache_data(ttl=1800, show_spinner=False)
 def fetch_traffic_status() -> list[dict]:
