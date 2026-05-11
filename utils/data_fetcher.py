@@ -179,14 +179,18 @@ CITY_COORDS = {
 
 
 def _fetch_weather_open_meteo(city: str) -> Optional[dict]:
-    """Fetch real-time weather from Open-Meteo (free, no API key)."""
+    """Fetch real-time weather from Open-Meteo (free, no API key).
+
+    Retries once on transient network errors and converts wind speed
+    from km/h (Open-Meteo default) to m/s for UI consistency.
+    """
     eng_city = KOR_CITY_MAP.get(city.strip(), city.strip())
     coords = CITY_COORDS.get(eng_city)
     if not coords:
         # Try geocoding API
         try:
             geo_url = f"https://geocoding-api.open-meteo.com/v1/search?name={eng_city}&count=1&language=en"
-            gr = requests.get(geo_url, timeout=5)
+            gr = requests.get(geo_url, timeout=8)
             gr.raise_for_status()
             results = gr.json().get("results", [])
             if results:
@@ -199,29 +203,34 @@ def _fetch_weather_open_meteo(city: str) -> Optional[dict]:
         f"https://api.open-meteo.com/v1/forecast?"
         f"latitude={lat}&longitude={lon}"
         f"&current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m"
+        f"&wind_speed_unit=ms"
         f"&timezone=auto"
     )
-    try:
-        r = requests.get(url, timeout=8)
-        r.raise_for_status()
-        d = r.json()
-        current = d.get("current", {})
-        wmo_code = current.get("weather_code", 0)
-        desc, icon = WMO_WEATHER_CODES.get(wmo_code, ("알 수 없음", "01d"))
-        return {
-            "city": city,
-            "lat": lat,
-            "lon": lon,
-            "temp": current.get("temperature_2m", 0),
-            "feels_like": current.get("apparent_temperature", 0),
-            "humidity": current.get("relative_humidity_2m", 0),
-            "desc": desc,
-            "icon": icon,
-            "wind_speed": current.get("wind_speed_10m", 0),
-            "updated": datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
-        }
-    except Exception:
-        return None
+    for _ in range(2):
+        try:
+            r = requests.get(url, timeout=12)
+            r.raise_for_status()
+            d = r.json()
+            current = d.get("current", {})
+            if not current or current.get("temperature_2m") is None:
+                continue
+            wmo_code = current.get("weather_code", 0)
+            desc, icon = WMO_WEATHER_CODES.get(wmo_code, ("알 수 없음", "01d"))
+            return {
+                "city": city,
+                "lat": lat,
+                "lon": lon,
+                "temp": round(float(current.get("temperature_2m", 0)), 1),
+                "feels_like": round(float(current.get("apparent_temperature", 0)), 1),
+                "humidity": int(current.get("relative_humidity_2m", 0) or 0),
+                "desc": desc,
+                "icon": icon,
+                "wind_speed": round(float(current.get("wind_speed_10m", 0)), 1),
+                "updated": datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
+            }
+        except Exception:
+            continue
+    return None
 
 
 def _fetch_weather_local(city: str, api_key: Optional[str]) -> dict:
@@ -332,10 +341,10 @@ def _fetch_traffic_local() -> list[dict]:
 # ── API Calls (Backend) and Public Functions ───────────────────────────────
 
 @st.cache_data(ttl=300, show_spinner=False)
-def fetch_weather(city: str = "Seoul", api_key: Optional[str] = None) -> dict:
-    """Fetch weather data from API or fallback to local execution."""
+def _fetch_weather_cached(city: str, api_key: Optional[str]) -> dict:
+    """캐시 가능한 실제 호출 — 실패 결과는 캐시되지 않도록 호출부에서 분기."""
     eng_city = KOR_CITY_MAP.get(city.strip(), city.strip())
-    
+
     if IS_API_MODE:
         try:
             params = {"city": eng_city}
@@ -347,6 +356,23 @@ def fetch_weather(city: str = "Seoul", api_key: Optional[str] = None) -> dict:
         except Exception:
             pass  # Fallback to local on API failure
     return _fetch_weather_local(eng_city, api_key)
+
+
+def fetch_weather(city: str = "Seoul", api_key: Optional[str] = None) -> dict:
+    """Fetch weather data. Mock(_sample=True) 결과는 캐싱하지 않고 매 호출마다 재시도."""
+    result = _fetch_weather_cached(city, api_key)
+    if result.get("_sample"):
+        # 캐시 무효화: 다음 호출에서 다시 시도하도록 캐시 비우기
+        try:
+            _fetch_weather_cached.clear()
+        except Exception:
+            pass
+        # 즉시 한 번 더 직접 시도 (캐시 우회)
+        eng_city = KOR_CITY_MAP.get(city.strip(), city.strip())
+        retry = _fetch_weather_open_meteo(eng_city)
+        if retry:
+            return retry
+    return result
 
 _NEWS_CAT_QUERY = {
     "종합": "오늘 주요뉴스 시사 사회 정치",

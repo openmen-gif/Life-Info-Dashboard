@@ -52,8 +52,11 @@ st.markdown(f"**상태**: {weather['desc']}")
 st.caption(f"마지막 업데이트: {weather['updated']}")
 
 if weather.get("_sample"):
-    st.warning("⚠️ OpenWeatherMap API 키가 없어 샘플 데이터를 표시합니다. "
-               "[무료 API 키 발급](https://openweathermap.org/api)")
+    st.warning(
+        "⚠️ 실시간 날씨 데이터를 가져오지 못해 임시 데이터를 표시합니다. "
+        "인터넷 연결을 확인하거나, **[날씨 조회 및 갱신]** 버튼을 다시 눌러주세요. "
+        "정밀 데이터가 필요하면 [무료 OpenWeatherMap API 키](https://openweathermap.org/api)를 발급받아 입력하세요."
+    )
 
 st.markdown("---")
 
