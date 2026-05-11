@@ -76,23 +76,32 @@ with tab1:
             st.metric(c, f"{w['temp']}°C", f"{w['desc']}")
 
 with tab2:
-    st.markdown("### 🇰🇷 국내 실시간 기상 레이더")
+    st.markdown("### 🇰🇷 국내 실시간 기상 레이더 (기상청·Rainviewer)")
     st.info(
-        "한국 전역의 실시간 **강수/레이더** 영상입니다. "
-        "지도를 마우스로 확대·이동할 수 있으며, 우측 하단 메뉴에서 레이어(바람·온도·강수 등)를 변경하세요."
+        "**상단**: 기상청(KMA) 공식 한반도 강수 레이더 합성영상 (정지 이미지·자동 갱신). "
+        "**하단**: Rainviewer 인터랙티브 강수 지도 (확대/축소·재생 가능)."
     )
-    # Windy radar: use searched city coords (zoom 9 = city-level view)
-    html_kr_radar = f"""
-    <span style="display:none" data-city="{weather['city']}-{lat}-{lon}-kr-radar-v3"></span>
+
+    # 1. 기상청 공식 합성 레이더 PNG (캐시버스터로 자동 갱신)
+    import datetime as _dt2
+    _bust = _dt2.datetime.now().strftime("%Y%m%d%H%M")
+    kma_img = f"https://www.weather.go.kr/w/repositary/image/rdr/rdr_CMP_HSP_PUB_FQC.png?ts={_bust}"
+    st.image(kma_img, caption=f"기상청 합성 레이더 (PUB_FQC) · 갱신 {_bust[8:10]}:{_bust[10:12]}", use_container_width=True)
+
+    st.markdown("---")
+
+    # 2. Rainviewer 인터랙티브 강수 레이더 (X-Frame-Options: ALLOWALL 확인)
+    html_rv = f"""
+    <span style="display:none" data-city="{weather['city']}-{lat}-{lon}-rv"></span>
     <iframe
         width="100%"
-        height="620"
-        src="https://embed.windy.com/embed.html?type=map&location=coordinates&metricRain=mm&metricTemp=%C2%B0C&metricWind=m/s&zoom=9&overlay=radar&product=radar&level=surface&lat={lat}&lon={lon}"
+        height="560"
+        src="https://www.rainviewer.com/map.html?loc={lat},{lon},8&oCS=1&oF=0&oAP=1&c=3&o=83&lm=1&layer=radar-1h&sm=1&sn=1"
         frameborder="0"
         style="border-radius:8px;">
     </iframe>
     """
-    components.html(html_kr_radar, height=640)
+    components.html(html_rv, height=580)
 
     # KMA official radar shortcut
     st.markdown("**기상청 공식 바로가기**")
@@ -117,15 +126,37 @@ with tab3:
     components.html(html_windy, height=620)
 
 with tab4:
-    st.markdown(f"### 🌊 Windfinder 바람/파도 범위 - {weather['city']}")
-    st.info("정밀한 풍속, 조류, 파도 높이 등의 관측에 특화된 지도입니다. 우측 상단의 메뉴를 통해 보고자 하는 필터를 변경할 수 있습니다.")
-    html_windfinder = f"""
-        <span style="display:none" data-city="{weather['city']}-{lat}-{lon}"></span>
+    st.markdown(f"### 🌊 파도·해상 기상 - {weather['city']}")
+    st.info(
+        "Windy의 **파도/너울 오버레이**로 해당 지역 해상 상황을 표시합니다. "
+        "Windfinder는 iframe 임베드를 차단해 외부 링크로 제공합니다."
+    )
+    # Windy: waves overlay (windfinder가 iframe 차단해서 대체)
+    html_waves = f"""
+        <span style="display:none" data-city="{weather['city']}-{lat}-{lon}-waves"></span>
         <iframe width="100%" height="600"
-            src="https://ko.windfinder.com/weather-maps/forecast/wind/sea_of_japan#{8}/{lat}/{lon}"
-            frameborder="0"></iframe>
+            src="https://embed.windy.com/embed.html?type=map&location=coordinates&metricRain=mm&metricTemp=%C2%B0C&metricWind=m/s&zoom=8&overlay=waves&product=ecmwfWaves&level=surface&lat={lat}&lon={lon}"
+            frameborder="0"
+            style="border-radius:8px;">
+        </iframe>
     """
-    components.html(html_windfinder, height=620)
+    components.html(html_waves, height=620)
+
+    # 외부 해상 기상 사이트 바로가기
+    st.markdown("**해상/바람 정밀 분석 사이트 바로가기**")
+    ext_cols = st.columns(3)
+    with ext_cols[0]:
+        st.link_button("🌊 Windfinder (해당 위치)",
+                       f"https://www.windfinder.com/#8/{lat}/{lon}",
+                       use_container_width=True)
+    with ext_cols[1]:
+        st.link_button("🌀 Windy 해상 차트",
+                       f"https://www.windy.com/?waves,{lat},{lon},8",
+                       use_container_width=True)
+    with ext_cols[2]:
+        st.link_button("⚓ 기상청 해양기상",
+                       "https://www.weather.go.kr/w/ocean/marine-weather.do",
+                       use_container_width=True)
 
 # ── 관련 영상 ─────────────────────────────────────────────────────
 st.markdown("---")

@@ -106,35 +106,177 @@ def _deduplicate_news(items: list[dict], title_key: str = "title") -> list[dict]
 # ── Local Fetching Logic (Fallback/Standalone) ──────────────────────────────
 
 KOR_CITY_MAP = {
-    # 국내 주요 도시
+    # 광역시·도
     "서울": "Seoul", "부산": "Busan", "대구": "Daegu", "인천": "Incheon",
     "광주": "Gwangju", "대전": "Daejeon", "울산": "Ulsan", "세종": "Sejong",
     "경기": "Gyeonggi-do", "강원": "Gangwon-do", "충북": "Chungcheongbuk-do",
     "충남": "Chungcheongnam-do", "전북": "Jeollabuk-do", "전남": "Jeollanam-do",
     "경북": "Gyeongsangbuk-do", "경남": "Gyeongsangnam-do", "제주": "Jeju",
-    # 미국/캐나다
-    "뉴욕": "New York", "뉴요크": "New York",
-    "시카고": "Chicago", "로스앤젠레스": "Los Angeles", "엘얠": "Los Angeles",
-    "새프란시스코": "San Francisco", "샜프란시스코": "San Francisco",
-    "시애틀": "Seattle", "휴스턴": "Houston", "마이애미": "Miami",
-    "미네아폴리스": "Minneapolis", "시애틀": "Seattle",
-    "토론토": "Toronto", "밴쿠버": "Vancouver",
-    # 유럽
-    "맰던": "London", "파리": "Paris", "베를린": "Berlin",
-    "로마": "Rome", "마드리드": "Madrid", "바르셈로나": "Barcelona",
-    "암스테르담": "Amsterdam", "비엔나": "Vienna", "좤리히": "Zurich",
-    "프라하": "Prague", "부눓페스트": "Budapest", "와르샤바": "Warsaw",
-    # 아시아
-    "도쿄": "Tokyo", "오사카": "Osaka", "교토": "Kyoto", "쯤응": "Chengdu",
+    # 경기/강원 주요 시
+    "수원": "Suwon", "성남": "Seongnam", "용인": "Yongin", "고양": "Goyang",
+    "부천": "Bucheon", "안산": "Ansan", "안양": "Anyang", "남양주": "Namyangju",
+    "화성": "Hwaseong", "평택": "Pyeongtaek", "의정부": "Uijeongbu",
+    "시흥": "Siheung", "파주": "Paju", "김포": "Gimpo", "광명": "Gwangmyeong",
+    "이천": "Icheon", "양주": "Yangju", "오산": "Osan", "구리": "Guri",
+    "안성": "Anseong", "포천": "Pocheon", "하남": "Hanam", "여주": "Yeoju",
+    "춘천": "Chuncheon", "원주": "Wonju", "강릉": "Gangneung", "동해": "Donghae",
+    "속초": "Sokcho", "삼척": "Samcheok", "태백": "Taebaek",
+    # 충청 주요 시
+    "청주": "Cheongju", "충주": "Chungju", "제천": "Jecheon",
+    "천안": "Cheonan", "아산": "Asan", "공주": "Gongju", "보령": "Boryeong",
+    "서산": "Seosan", "논산": "Nonsan", "당진": "Dangjin",
+    # 전라 주요 시
+    "전주": "Jeonju", "익산": "Iksan", "군산": "Gunsan", "정읍": "Jeongeup",
+    "남원": "Namwon", "김제": "Gimje",
+    "목포": "Mokpo", "여수": "Yeosu", "순천": "Suncheon", "나주": "Naju",
+    "광양": "Gwangyang",
+    # 경상 주요 시 (창원 포함)
+    "창원": "Changwon", "진주": "Jinju", "통영": "Tongyeong", "사천": "Sacheon",
+    "김해": "Gimhae", "양산": "Yangsan", "거제": "Geoje", "밀양": "Miryang",
+    "포항": "Pohang", "경주": "Gyeongju", "구미": "Gumi", "안동": "Andong",
+    "영주": "Yeongju", "경산": "Gyeongsan", "상주": "Sangju", "문경": "Mungyeong",
+    "김천": "Gimcheon",
+    # 제주
+    "제주시": "Jeju", "서귀포": "Seogwipo",
+    # ── 미국 ──
+    "뉴욕": "New York", "엘에이": "Los Angeles", "로스앤젤레스": "Los Angeles",
+    "시카고": "Chicago", "샌프란시스코": "San Francisco", "시애틀": "Seattle",
+    "휴스턴": "Houston", "마이애미": "Miami", "보스턴": "Boston",
+    "워싱턴": "Washington", "라스베이거스": "Las Vegas", "댈러스": "Dallas",
+    "필라델피아": "Philadelphia", "애틀랜타": "Atlanta", "디트로이트": "Detroit",
+    "미니애폴리스": "Minneapolis", "올랜도": "Orlando", "샌디에이고": "San Diego",
+    "호놀룰루": "Honolulu", "앵커리지": "Anchorage", "피닉스": "Phoenix",
+    "덴버": "Denver", "포틀랜드": "Portland", "솔트레이크시티": "Salt Lake City",
+    "오스틴": "Austin", "샌안토니오": "San Antonio", "내슈빌": "Nashville",
+    "뉴올리언스": "New Orleans", "샬럿": "Charlotte", "콜럼버스": "Columbus",
+    "인디애나폴리스": "Indianapolis", "신시내티": "Cincinnati", "클리블랜드": "Cleveland",
+    "피츠버그": "Pittsburgh", "밀워키": "Milwaukee", "캔자스시티": "Kansas City",
+    "세인트루이스": "St. Louis", "탬파": "Tampa", "잭슨빌": "Jacksonville",
+    "멤피스": "Memphis", "버펄로": "Buffalo", "새크라멘토": "Sacramento",
+    "투손": "Tucson", "앨버커키": "Albuquerque", "오마하": "Omaha",
+    # ── 캐나다 ──
+    "토론토": "Toronto", "밴쿠버": "Vancouver", "몬트리올": "Montreal",
+    "오타와": "Ottawa", "캘거리": "Calgary", "에드먼턴": "Edmonton",
+    "퀘벡": "Quebec City", "위니펙": "Winnipeg", "핼리팩스": "Halifax",
+    # ── 중남미 ──
+    "멕시코시티": "Mexico City", "과달라하라": "Guadalajara", "몬테레이": "Monterrey",
+    "칸쿤": "Cancun", "티후아나": "Tijuana",
+    "아바나": "Havana", "파나마시티": "Panama City", "산호세": "San Jose",
+    "과테말라시티": "Guatemala City",
+    "리마": "Lima", "산티아고": "Santiago", "보고타": "Bogota",
+    "카라카스": "Caracas", "키토": "Quito", "라파스": "La Paz",
+    "아순시온": "Asuncion", "몬테비데오": "Montevideo", "메데인": "Medellin",
+    "상파울루": "Sao Paulo", "리우데자네이루": "Rio de Janeiro",
+    "브라질리아": "Brasilia", "살바도르": "Salvador", "포르탈레자": "Fortaleza",
+    "벨루오리존치": "Belo Horizonte", "쿠리치바": "Curitiba",
+    "부에노스아이레스": "Buenos Aires", "코르도바": "Cordoba",
+    # ── 유럽 (서유럽) ──
+    "런던": "London", "에든버러": "Edinburgh", "맨체스터": "Manchester",
+    "버밍엄": "Birmingham", "리버풀": "Liverpool", "글래스고": "Glasgow",
+    "더블린": "Dublin", "리스본": "Lisbon", "포르투": "Porto",
+    "파리": "Paris", "리옹": "Lyon", "마르세유": "Marseille",
+    "니스": "Nice", "보르도": "Bordeaux", "툴루즈": "Toulouse",
+    "스트라스부르": "Strasbourg",
+    "베를린": "Berlin", "뮌헨": "Munich", "프랑크푸르트": "Frankfurt",
+    "함부르크": "Hamburg", "쾰른": "Cologne", "뒤셀도르프": "Dusseldorf",
+    "슈투트가르트": "Stuttgart", "라이프치히": "Leipzig", "드레스덴": "Dresden",
+    "로마": "Rome", "밀라노": "Milan", "베니스": "Venice", "베네치아": "Venice",
+    "피렌체": "Florence", "나폴리": "Naples", "토리노": "Turin",
+    "볼로냐": "Bologna", "팔레르모": "Palermo",
+    "마드리드": "Madrid", "바르셀로나": "Barcelona", "세비야": "Seville",
+    "발렌시아": "Valencia", "빌바오": "Bilbao", "그라나다": "Granada",
+    "암스테르담": "Amsterdam", "로테르담": "Rotterdam", "헤이그": "The Hague",
+    "위트레흐트": "Utrecht",
+    "브뤼셀": "Brussels", "안트베르펜": "Antwerp", "브뤼헤": "Bruges",
+    "비엔나": "Vienna", "잘츠부르크": "Salzburg", "그라츠": "Graz",
+    "인스브루크": "Innsbruck",
+    "취리히": "Zurich", "제네바": "Geneva", "베른": "Bern",
+    "바젤": "Basel", "루체른": "Lucerne", "로잔": "Lausanne",
+    # ── 유럽 (북유럽) ──
+    "스톡홀름": "Stockholm", "예테보리": "Gothenburg", "오슬로": "Oslo",
+    "베르겐": "Bergen", "코펜하겐": "Copenhagen", "헬싱키": "Helsinki",
+    "레이캬비크": "Reykjavik",
+    # ── 유럽 (동유럽) ──
+    "프라하": "Prague", "부다페스트": "Budapest", "바르샤바": "Warsaw",
+    "크라쿠프": "Krakow", "그단스크": "Gdansk", "브로츠와프": "Wroclaw",
+    "브라티슬라바": "Bratislava", "류블랴나": "Ljubljana", "자그레브": "Zagreb",
+    "소피아": "Sofia", "부쿠레슈티": "Bucharest", "베오그라드": "Belgrade",
+    "키이우": "Kyiv", "키예프": "Kyiv",
+    "탈린": "Tallinn", "리가": "Riga", "빌뉴스": "Vilnius",
+    "아테네": "Athens", "테살로니키": "Thessaloniki",
+    "이스탄불": "Istanbul", "앙카라": "Ankara", "이즈미르": "Izmir",
+    "안탈리아": "Antalya",
+    "모스크바": "Moscow", "상트페테르부르크": "Saint Petersburg",
+    "노보시비르스크": "Novosibirsk", "예카테린부르크": "Yekaterinburg",
+    "블라디보스토크": "Vladivostok",
+    # ── 일본 ──
+    "도쿄": "Tokyo", "오사카": "Osaka", "교토": "Kyoto", "삿포로": "Sapporo",
+    "후쿠오카": "Fukuoka", "나고야": "Nagoya", "요코하마": "Yokohama",
+    "고베": "Kobe", "센다이": "Sendai", "히로시마": "Hiroshima",
+    "나가사키": "Nagasaki", "오키나와": "Naha", "나하": "Naha",
+    "가나자와": "Kanazawa", "벳푸": "Beppu",
+    # ── 중국 ──
     "베이징": "Beijing", "상하이": "Shanghai", "광저우": "Guangzhou",
-    "싱가포르": "Singapore", "어슦달라럼푸르": "Kuala Lumpur",
-    "방콕": "Bangkok", "호치민": "Ho Chi Minh", "하노이": "Hanoi",
-    "자카르타": "Jakarta", "두바이": "Dubai", "아부다비": "Abu Dhabi",
-    "이스탄불": "Istanbul", "토나카": "Ankara",
-    # 오세아니아/남미
-    "시드니": "Sydney", "멜바른": "Melbourne", "브리즈번": "Brisbane",
-    "색파울루": "Sao Paulo", "리우데자네이로": "Rio de Janeiro",
-    "부에노스아이레스": "Buenos Aires",
+    "선전": "Shenzhen", "심천": "Shenzhen", "청두": "Chengdu",
+    "충칭": "Chongqing", "시안": "Xian", "톈진": "Tianjin",
+    "항저우": "Hangzhou", "난징": "Nanjing", "쑤저우": "Suzhou",
+    "우한": "Wuhan", "칭다오": "Qingdao", "다롄": "Dalian",
+    "하얼빈": "Harbin", "쿤밍": "Kunming", "샤먼": "Xiamen",
+    "산야": "Sanya", "라싸": "Lhasa", "우루무치": "Urumqi",
+    # ── 홍콩/대만 ──
+    "홍콩": "Hong Kong", "마카오": "Macau",
+    "타이베이": "Taipei", "가오슝": "Kaohsiung", "타이중": "Taichung",
+    # ── 동남아시아 ──
+    "싱가포르": "Singapore", "쿠알라룸푸르": "Kuala Lumpur",
+    "페낭": "Penang", "조호르바루": "Johor Bahru",
+    "방콕": "Bangkok", "치앙마이": "Chiang Mai", "푸켓": "Phuket",
+    "파타야": "Pattaya", "코사무이": "Koh Samui",
+    "호치민": "Ho Chi Minh", "하노이": "Hanoi", "다낭": "Da Nang",
+    "나트랑": "Nha Trang", "하롱": "Ha Long",
+    "자카르타": "Jakarta", "수라바야": "Surabaya", "발리": "Denpasar",
+    "덴파사르": "Denpasar", "족자카르타": "Yogyakarta",
+    "마닐라": "Manila", "세부": "Cebu", "다바오": "Davao",
+    "보라카이": "Boracay",
+    "프놈펜": "Phnom Penh", "시엠레아프": "Siem Reap",
+    "양곤": "Yangon", "만달레이": "Mandalay",
+    "비엔티안": "Vientiane", "루앙프라방": "Luang Prabang",
+    "반다르스리브가완": "Bandar Seri Begawan",
+    # ── 남아시아 ──
+    "뭄바이": "Mumbai", "뉴델리": "New Delhi", "델리": "New Delhi",
+    "방갈로르": "Bangalore", "벵갈루루": "Bangalore",
+    "콜카타": "Kolkata", "첸나이": "Chennai", "하이데라바드": "Hyderabad",
+    "푸네": "Pune", "아마다바드": "Ahmedabad", "자이푸르": "Jaipur",
+    "고아": "Goa", "다카": "Dhaka", "콜롬보": "Colombo",
+    "카트만두": "Kathmandu", "팀부": "Thimphu",
+    "카라치": "Karachi", "라호르": "Lahore", "이슬라마바드": "Islamabad",
+    # ── 중동 ──
+    "두바이": "Dubai", "아부다비": "Abu Dhabi", "도하": "Doha",
+    "리야드": "Riyadh", "제다": "Jeddah", "메카": "Mecca", "메디나": "Medina",
+    "테헤란": "Tehran", "쿠웨이트": "Kuwait City", "마나마": "Manama",
+    "무스카트": "Muscat", "암만": "Amman", "베이루트": "Beirut",
+    "다마스쿠스": "Damascus", "바그다드": "Baghdad",
+    "예루살렘": "Jerusalem", "텔아비브": "Tel Aviv",
+    # ── 오세아니아 ──
+    "시드니": "Sydney", "멜버른": "Melbourne", "브리즈번": "Brisbane",
+    "퍼스": "Perth", "애들레이드": "Adelaide", "캔버라": "Canberra",
+    "골드코스트": "Gold Coast", "다윈": "Darwin", "호바트": "Hobart",
+    "케언스": "Cairns",
+    "오클랜드": "Auckland", "웰링턴": "Wellington",
+    "크라이스트처치": "Christchurch", "퀸스타운": "Queenstown",
+    "수바": "Suva", "포트모르즈비": "Port Moresby",
+    "파페에테": "Papeete", "괌": "Hagatna", "사이판": "Saipan",
+    # ── 아프리카 ──
+    "카이로": "Cairo", "알렉산드리아": "Alexandria",
+    "케이프타운": "Cape Town", "요하네스버그": "Johannesburg",
+    "더반": "Durban", "프리토리아": "Pretoria",
+    "나이로비": "Nairobi", "라고스": "Lagos", "아부자": "Abuja",
+    "카사블랑카": "Casablanca", "라바트": "Rabat", "마라케시": "Marrakesh",
+    "튀니스": "Tunis", "알제": "Algiers", "트리폴리": "Tripoli",
+    "아디스아바바": "Addis Ababa", "하르툼": "Khartoum",
+    "아크라": "Accra", "다카르": "Dakar", "아비장": "Abidjan",
+    "몸바사": "Mombasa", "다르에스살람": "Dar es Salaam",
+    "킨샤사": "Kinshasa", "루안다": "Luanda", "하라레": "Harare",
+    "마푸토": "Maputo", "안타나나리보": "Antananarivo",
 }
 
 MOCK_COORD_MAP = {
@@ -163,18 +305,126 @@ WMO_WEATHER_CODES = {
 
 # Geocoding for common cities (lat, lon)
 CITY_COORDS = {
+    # 광역시·도
     "Seoul": (37.5665, 126.9780), "Busan": (35.1796, 129.0756),
     "Daegu": (35.8714, 128.6014), "Incheon": (37.4563, 126.7052),
     "Gwangju": (35.1595, 126.8526), "Daejeon": (36.3504, 127.3845),
     "Ulsan": (35.5384, 129.3114), "Sejong": (36.4800, 126.9252),
-    "Jeju": (33.4996, 126.5312),
-    "New York": (40.7128, -74.0060), "Chicago": (41.8781, -87.6298),
-    "London": (51.5074, -0.1278), "Tokyo": (35.6762, 139.6503),
-    "Osaka": (34.6937, 135.5023), "Paris": (48.8566, 2.3522),
+    "Jeju": (33.4996, 126.5312), "Seogwipo": (33.2541, 126.5601),
+    # 경기/강원 주요 시
+    "Suwon": (37.2636, 127.0286), "Seongnam": (37.4201, 127.1262),
+    "Yongin": (37.2411, 127.1776), "Goyang": (37.6584, 126.8320),
+    "Bucheon": (37.5035, 126.7660), "Ansan": (37.3219, 126.8309),
+    "Anyang": (37.3943, 126.9568), "Namyangju": (37.6360, 127.2167),
+    "Hwaseong": (37.1996, 126.8311), "Pyeongtaek": (36.9921, 127.1129),
+    "Uijeongbu": (37.7381, 127.0337), "Siheung": (37.3803, 126.8030),
+    "Paju": (37.7599, 126.7800), "Gimpo": (37.6151, 126.7159),
+    "Gwangmyeong": (37.4787, 126.8649), "Icheon": (37.2725, 127.4350),
+    "Yangju": (37.7853, 127.0457), "Osan": (37.1499, 127.0773),
+    "Guri": (37.5944, 127.1297), "Anseong": (37.0080, 127.2797),
+    "Pocheon": (37.8949, 127.2003), "Hanam": (37.5392, 127.2148),
+    "Yeoju": (37.2982, 127.6371),
+    "Chuncheon": (37.8813, 127.7298), "Wonju": (37.3422, 127.9202),
+    "Gangneung": (37.7519, 128.8761), "Donghae": (37.5246, 129.1145),
+    "Sokcho": (38.2070, 128.5918), "Samcheok": (37.4499, 129.1655),
+    "Taebaek": (37.1640, 128.9856),
+    # 충청 주요 시
+    "Cheongju": (36.6424, 127.4890), "Chungju": (36.9711, 127.9325),
+    "Jecheon": (37.1326, 128.1908),
+    "Cheonan": (36.8151, 127.1139), "Asan": (36.7898, 127.0017),
+    "Gongju": (36.4467, 127.1192), "Boryeong": (36.3334, 126.6128),
+    "Seosan": (36.7848, 126.4503), "Nonsan": (36.1872, 127.0986),
+    "Dangjin": (36.8895, 126.6457),
+    # 전라 주요 시
+    "Jeonju": (35.8242, 127.1480), "Iksan": (35.9483, 126.9577),
+    "Gunsan": (35.9678, 126.7368), "Jeongeup": (35.5697, 126.8559),
+    "Namwon": (35.4163, 127.3905), "Gimje": (35.8033, 126.8809),
+    "Mokpo": (34.8118, 126.3922), "Yeosu": (34.7604, 127.6622),
+    "Suncheon": (34.9506, 127.4872), "Naju": (35.0157, 126.7106),
+    "Gwangyang": (34.9407, 127.6957),
+    # 경상 주요 시
+    "Changwon": (35.2280, 128.6811), "Jinju": (35.1800, 128.1076),
+    "Tongyeong": (34.8544, 128.4331), "Sacheon": (35.0035, 128.0644),
+    "Gimhae": (35.2284, 128.8893), "Yangsan": (35.3349, 129.0376),
+    "Geoje": (34.8806, 128.6212), "Miryang": (35.5036, 128.7466),
+    "Pohang": (36.0190, 129.3435), "Gyeongju": (35.8562, 129.2247),
+    "Gumi": (36.1196, 128.3445), "Andong": (36.5684, 128.7294),
+    "Yeongju": (36.8056, 128.6240), "Gyeongsan": (35.8252, 128.7415),
+    "Sangju": (36.4111, 128.1592), "Mungyeong": (36.5945, 128.1869),
+    "Gimcheon": (36.1397, 128.1136),
+    # 해외 주요 도시 — 미국/캐나다
+    "New York": (40.7128, -74.0060), "Los Angeles": (34.0522, -118.2437),
+    "Chicago": (41.8781, -87.6298), "San Francisco": (37.7749, -122.4194),
+    "Seattle": (47.6062, -122.3321), "Houston": (29.7604, -95.3698),
+    "Miami": (25.7617, -80.1918), "Boston": (42.3601, -71.0589),
+    "Washington": (38.9072, -77.0369), "Las Vegas": (36.1699, -115.1398),
+    "Dallas": (32.7767, -96.7970), "Philadelphia": (39.9526, -75.1652),
+    "Atlanta": (33.7490, -84.3880), "Detroit": (42.3314, -83.0458),
+    "Minneapolis": (44.9778, -93.2650), "Orlando": (28.5384, -81.3789),
+    "San Diego": (32.7157, -117.1611), "Honolulu": (21.3099, -157.8581),
+    "Anchorage": (61.2181, -149.9003),
+    "Toronto": (43.6532, -79.3832), "Vancouver": (49.2827, -123.1207),
+    "Montreal": (45.5017, -73.5673), "Ottawa": (45.4215, -75.6972),
+    "Calgary": (51.0447, -114.0719),
+    # 중남미
+    "Mexico City": (19.4326, -99.1332), "Lima": (-12.0464, -77.0428),
+    "Santiago": (-33.4489, -70.6693), "Bogota": (4.7110, -74.0721),
+    "Caracas": (10.4806, -66.9036),
+    "Sao Paulo": (-23.5505, -46.6333), "Rio de Janeiro": (-22.9068, -43.1729),
+    "Buenos Aires": (-34.6037, -58.3816),
+    # 유럽
+    "London": (51.5074, -0.1278), "Paris": (48.8566, 2.3522),
+    "Berlin": (52.5200, 13.4050), "Munich": (48.1351, 11.5820),
+    "Frankfurt": (50.1109, 8.6821), "Hamburg": (53.5511, 9.9937),
+    "Rome": (41.9028, 12.4964), "Milan": (45.4642, 9.1900),
+    "Venice": (45.4408, 12.3155), "Florence": (43.7696, 11.2558),
+    "Naples": (40.8518, 14.2681),
+    "Madrid": (40.4168, -3.7038), "Barcelona": (41.3851, 2.1734),
+    "Seville": (37.3891, -5.9845),
+    "Amsterdam": (52.3676, 4.9041), "Rotterdam": (51.9244, 4.4777),
+    "Brussels": (50.8503, 4.3517),
+    "Vienna": (48.2082, 16.3738), "Zurich": (47.3769, 8.5417),
+    "Geneva": (46.2044, 6.1432), "Bern": (46.9480, 7.4474),
+    "Prague": (50.0755, 14.4378), "Budapest": (47.4979, 19.0402),
+    "Warsaw": (52.2297, 21.0122),
+    "Stockholm": (59.3293, 18.0686), "Oslo": (59.9139, 10.7522),
+    "Copenhagen": (55.6761, 12.5683), "Helsinki": (60.1699, 24.9384),
+    "Dublin": (53.3498, -6.2603), "Lisbon": (38.7223, -9.1393),
+    "Athens": (37.9838, 23.7275),
+    "Istanbul": (41.0082, 28.9784), "Ankara": (39.9334, 32.8597),
+    "Moscow": (55.7558, 37.6173), "Saint Petersburg": (59.9311, 30.3609),
+    # 아시아
+    "Tokyo": (35.6762, 139.6503), "Osaka": (34.6937, 135.5023),
+    "Kyoto": (35.0116, 135.7681), "Sapporo": (43.0618, 141.3545),
+    "Fukuoka": (33.5904, 130.4017), "Nagoya": (35.1815, 136.9066),
+    "Yokohama": (35.4437, 139.6380),
     "Beijing": (39.9042, 116.4074), "Shanghai": (31.2304, 121.4737),
-    "Singapore": (1.3521, 103.8198), "Sydney": (-33.8688, 151.2093),
-    "Dubai": (25.2048, 55.2708), "Bangkok": (13.7563, 100.5018),
+    "Guangzhou": (23.1291, 113.2644), "Shenzhen": (22.5431, 114.0579),
+    "Chengdu": (30.5728, 104.0668), "Chongqing": (29.4316, 106.9123),
+    "Xian": (34.3416, 108.9398), "Tianjin": (39.0842, 117.2010),
+    "Hong Kong": (22.3193, 114.1694), "Macau": (22.1987, 113.5439),
+    "Taipei": (25.0330, 121.5654),
+    "Singapore": (1.3521, 103.8198), "Kuala Lumpur": (3.1390, 101.6869),
+    "Bangkok": (13.7563, 100.5018), "Chiang Mai": (18.7883, 98.9853),
     "Ho Chi Minh": (10.8231, 106.6297), "Hanoi": (21.0285, 105.8542),
+    "Da Nang": (16.0544, 108.2022),
+    "Jakarta": (-6.2088, 106.8456), "Denpasar": (-8.6705, 115.2126),
+    "Manila": (14.5995, 120.9842), "Cebu": (10.3157, 123.8854),
+    "Mumbai": (19.0760, 72.8777), "New Delhi": (28.6139, 77.2090),
+    "Bangalore": (12.9716, 77.5946), "Kolkata": (22.5726, 88.3639),
+    "Chennai": (13.0827, 80.2707),
+    "Dubai": (25.2048, 55.2708), "Abu Dhabi": (24.4539, 54.3773),
+    "Doha": (25.2854, 51.5310), "Riyadh": (24.7136, 46.6753),
+    "Tehran": (35.6892, 51.3890), "Kuwait City": (29.3759, 47.9774),
+    # 오세아니아
+    "Sydney": (-33.8688, 151.2093), "Melbourne": (-37.8136, 144.9631),
+    "Brisbane": (-27.4698, 153.0251), "Perth": (-31.9505, 115.8605),
+    "Adelaide": (-34.9285, 138.6007), "Canberra": (-35.2809, 149.1300),
+    "Auckland": (-36.8485, 174.7633), "Wellington": (-41.2865, 174.7762),
+    # 아프리카
+    "Cairo": (30.0444, 31.2357), "Cape Town": (-33.9249, 18.4241),
+    "Johannesburg": (-26.2041, 28.0473), "Nairobi": (-1.2921, 36.8219),
+    "Lagos": (6.5244, 3.3792), "Casablanca": (33.5731, -7.5898),
 }
 
 
@@ -184,10 +434,12 @@ def _fetch_weather_open_meteo(city: str) -> Optional[dict]:
     Retries once on transient network errors and converts wind speed
     from km/h (Open-Meteo default) to m/s for UI consistency.
     """
-    eng_city = KOR_CITY_MAP.get(city.strip(), city.strip())
+    raw_city = city.strip()
+    eng_city = KOR_CITY_MAP.get(raw_city, raw_city)
     coords = CITY_COORDS.get(eng_city)
+
+    # 1. 영문 도시명으로 지오코딩
     if not coords:
-        # Try geocoding API
         try:
             geo_url = f"https://geocoding-api.open-meteo.com/v1/search?name={eng_city}&count=1&language=en"
             gr = requests.get(geo_url, timeout=8)
@@ -196,7 +448,22 @@ def _fetch_weather_open_meteo(city: str) -> Optional[dict]:
             if results:
                 coords = (results[0]["latitude"], results[0]["longitude"])
         except Exception:
-            coords = (37.5665, 126.9780)  # Default Seoul
+            pass
+
+    # 2. 한글 도시명으로 지오코딩 (KOR_CITY_MAP에 없는 경우 백업)
+    if not coords and raw_city != eng_city:
+        try:
+            geo_url = f"https://geocoding-api.open-meteo.com/v1/search?name={raw_city}&count=1&language=ko"
+            gr = requests.get(geo_url, timeout=8)
+            gr.raise_for_status()
+            results = gr.json().get("results", [])
+            if results:
+                coords = (results[0]["latitude"], results[0]["longitude"])
+        except Exception:
+            pass
+
+    if not coords:
+        return None  # 좌표 미확보 → 호출부에서 mock 폴백 처리
 
     lat, lon = coords
     url = (
