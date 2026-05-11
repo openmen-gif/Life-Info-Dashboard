@@ -126,31 +126,38 @@ with tab3:
     components.html(html_windy, height=620)
 
 with tab4:
-    st.markdown(f"### 🌊 파도·해상 기상 - {weather['city']}")
+    st.markdown(f"### 🌊 Windfinder 바람·파도 예보 - {weather['city']}")
+
+    # Windfinder spot slug 변환: KOR_CITY_MAP 영문화 → lowercase, 공백/하이픈 → underscore
+    from utils.data_fetcher import KOR_CITY_MAP as _KCM
+    _eng = _KCM.get(weather['city'].strip(), weather['city'].strip())
+    _spot = _eng.lower().replace(' ', '_').replace('-', '_').replace('.', '')
+
     st.info(
-        "Windy의 **파도/너울 오버레이**로 해당 지역 해상 상황을 표시합니다. "
-        "Windfinder는 iframe 임베드를 차단해 외부 링크로 제공합니다."
+        "Windfinder 공식 위젯으로 해당 위치의 정밀 **풍속·풍향·돌풍·파도** 예보를 표시합니다. "
+        "Windfinder는 해변·항구 등 spot 단위로 운영되어 일부 도시만 등록되어 있습니다 "
+        "(예: 서울·창원·뉴욕·시드니·런던·파리). 미등록 도시는 하단 외부 링크에서 직접 검색하세요."
     )
-    # Windy: waves overlay (windfinder가 iframe 차단해서 대체)
-    html_waves = f"""
-        <span style="display:none" data-city="{weather['city']}-{lat}-{lon}-waves"></span>
-        <iframe width="100%" height="600"
-            src="https://embed.windy.com/embed.html?type=map&location=coordinates&metricRain=mm&metricTemp=%C2%B0C&metricWind=m/s&zoom=8&overlay=waves&product=ecmwfWaves&level=surface&lat={lat}&lon={lon}"
+
+    html_wf = f"""
+        <span style="display:none" data-city="{weather['city']}-{_spot}-wf"></span>
+        <iframe width="100%" height="650"
+            src="https://www.windfinder.com/widget/forecast/{_spot}"
             frameborder="0"
             style="border-radius:8px;">
         </iframe>
     """
-    components.html(html_waves, height=620)
+    components.html(html_wf, height=670)
 
     # 외부 해상 기상 사이트 바로가기
-    st.markdown("**해상/바람 정밀 분석 사이트 바로가기**")
+    st.markdown("**해상·바람 정밀 분석 사이트 바로가기**")
     ext_cols = st.columns(3)
     with ext_cols[0]:
-        st.link_button("🌊 Windfinder (해당 위치)",
-                       f"https://www.windfinder.com/#8/{lat}/{lon}",
+        st.link_button("🔍 Windfinder 검색",
+                       f"https://www.windfinder.com/search?q={_eng}",
                        use_container_width=True)
     with ext_cols[1]:
-        st.link_button("🌀 Windy 해상 차트",
+        st.link_button("🌀 Windy 파도 차트",
                        f"https://www.windy.com/?waves,{lat},{lon},8",
                        use_container_width=True)
     with ext_cols[2]:
