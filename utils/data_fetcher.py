@@ -564,19 +564,40 @@ def _fetch_news_local(category: str, limit: int) -> list[dict]:
     except Exception:
         return []
 
-def _fetch_traffic_local() -> list[dict]:
-    """Fetch real-time traffic news via DDG news search.
+_TRAFFIC_QUERY = "고속도로 교통 도로 상황"
+_TRAFFIC_STATUS_KEYWORDS = [
+    ("원활", "원활", "green"), ("소통", "원활", "green"),
+    ("서행", "서행", "orange"), ("혼잡", "혼잡", "orange"),
+    ("지체", "지체", "orange"),
+    ("정체", "정체", "red"), ("통제", "통제", "red"),
+    ("사고", "사고", "red"),
+]
 
-    교통 정보는 실시간성이 핵심이므로 1일 이내 기사를 우선 수집하고,
-    부족할 경우에만 1주일로 확장. published 기준 내림차순 정렬.
+
+def _classify_traffic(text: str) -> tuple[str, str]:
+    """기사 본문/제목에서 교통 상태 키워드를 감지해 (status, color) 반환."""
+    for kw, st_val, clr in _TRAFFIC_STATUS_KEYWORDS:
+        if kw in text:
+            return st_val, clr
+    return "정보", "blue"
+
+
+def _fetch_traffic_local() -> list[dict]:
+    """실시간 교통 뉴스 수집. DDG news → Google News RSS 다단 폴백.
+
+    실시간성을 위해 1일 → 1주 → RSS(7일) 순으로 시도하여 빈 결과를 피함.
+    RSS는 Google News가 보통 최신순으로 보내주므로 묵은 기사 위험이 낮음.
     """
-    def _query_ddg(timelimit: str) -> list:
+    items: list[dict] = []
+
+    # ── DDG 시도 (1일 → 1주) ────────────────────────────────────────────
+    def _try_ddg(timelimit: str) -> list:
         try:
             if not _DDGS:
                 return []
             with _DDGS() as ddgs:
                 return list(ddgs.news(
-                    "고속도로 교통 도로 상황",
+                    _TRAFFIC_QUERY,
                     region="kr-kr",
                     max_results=8,
                     timelimit=timelimit,
@@ -584,47 +605,54 @@ def _fetch_traffic_local() -> list[dict]:
         except Exception:
             return []
 
-    try:
-        results = _query_ddg("d")  # 1일 이내 우선
-        if len(results) < 4:
-            # 결과 부족 시 1주일 범위로 확장 후 합산·중복 제거
-            results = results + _query_ddg("w")
-        items = []
-        for r in results:
-            title = _strip_html(r.get("title", ""))
-            body = _strip_html(r.get("body", ""))
-            if not title:
-                continue
-            # 기사 내용에서 교통 상태 키워드 감지
-            text = title + " " + body
-            status, color = "정보", "blue"
-            for kw, st_val, clr in [
-                ("원활", "원활", "green"), ("소통", "원활", "green"),
-                ("서행", "서행", "orange"), ("혼잡", "혼잡", "orange"),
-                ("지체", "지체", "orange"),
-                ("정체", "정체", "red"), ("통제", "통제", "red"),
-                ("사고", "사고", "red"),
-            ]:
-                if kw in text:
-                    status, color = st_val, clr
-                    break
-            items.append({
-                "title": title,
-                "status": status,
-                "color": color,
-                "source": r.get("source", ""),
-                "link": r.get("url", ""),
-                "published": r.get("date", ""),
-                "snippet": body[:120] if body else "",
-            })
-        if items:
-            items = _deduplicate_news(items, title_key="title")
-            # published 내림차순 정렬 — 최신 기사 우선 노출
-            items.sort(key=lambda v: v.get("published", "") or "", reverse=True)
-            return items
-    except Exception:
-        pass
-    return []
+    raw = _try_ddg("d")
+    if len(raw) < 4:
+        raw = raw + _try_ddg("w")
+
+    for r in raw:
+        title = _strip_html(r.get("title", ""))
+        body = _strip_html(r.get("body", ""))
+        if not title:
+            continue
+        status, color = _classify_traffic(title + " " + body)
+        items.append({
+            "title": title,
+            "status": status,
+            "color": color,
+            "source": r.get("source", ""),
+            "link": r.get("url", ""),
+            "published": r.get("date", ""),
+            "snippet": body[:120] if body else "",
+        })
+
+    # ── DDG가 비었거나 부족하면 Google News RSS 폴백 ─────────────────────
+    if len(items) < 4:
+        try:
+            rss_results = _fetch_news_rss(_TRAFFIC_QUERY, limit=8, rss_when="7d")
+            for r in rss_results:
+                title = _strip_html(r.get("title", ""))
+                if not title:
+                    continue
+                snippet = _strip_html(r.get("snippet", ""))
+                status, color = _classify_traffic(title + " " + snippet)
+                items.append({
+                    "title": title,
+                    "status": status,
+                    "color": color,
+                    "source": r.get("source", ""),
+                    "link": r.get("link", ""),
+                    "published": r.get("published", ""),
+                    "snippet": snippet[:120],
+                })
+        except Exception:
+            pass
+
+    if not items:
+        return []
+
+    items = _deduplicate_news(items, title_key="title")
+    items.sort(key=lambda v: v.get("published", "") or "", reverse=True)
+    return items[:8]
 
 # ── API Calls (Backend) and Public Functions ───────────────────────────────
 
