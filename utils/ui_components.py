@@ -1,16 +1,25 @@
 import streamlit as st
 
 def render_weather_card(weather: dict):
-    """Render a concise weather summary card."""
+    """Render a concise weather summary card. _sample/누락 시 명확한 안내."""
     st.markdown("### 🌤️ 오늘의 날씨")
+    is_sample = bool(weather.get("_sample"))
+    has_data = weather.get("temp") not in (None, "-") and not is_sample
+
+    if not has_data:
+        st.warning("⚠️ 날씨 데이터를 불러오지 못했습니다. Open-Meteo API 응답 지연 가능 — 잠시 후 새로고침해주세요.")
+        st.caption(f"도시: {weather.get('city', 'Seoul')} · 갱신 시도: {weather.get('updated', '-')}")
+        return
+
     st.metric(
         label=f"{weather.get('city', 'Unknown')}",
         value=f"{weather.get('temp', '-')}°C",
         delta=f"체감 {weather.get('feels_like', '-')}°C",
     )
-    st.caption(f"{weather.get('desc', '')} | 습도 {weather.get('humidity', '-')}% | 풍속 {weather.get('wind_speed', '-')}m/s")
-    if weather.get("_sample"):
-        st.info("API 키 미설정 — 샘플 데이터")
+    st.caption(
+        f"{weather.get('desc', '')} | 습도 {weather.get('humidity', '-')}% | "
+        f"풍속 {weather.get('wind_speed', '-')}m/s · 🕒 {weather.get('updated', '-')}"
+    )
 
 def _fmt_published(pub: str) -> str:
     """published 문자열을 'MM-DD HH:MM' 형식으로 짧게 표시. 파싱 실패 시 원본 앞 16자."""

@@ -347,44 +347,51 @@ def render_expert_page(
 
     # ── 카테고리별 뉴스 탭 (sub_topics) ──────────────────────────────────
     if sub_topics:
-        st.markdown(f"### 📂 {title} 카테고리별 최신 동향")
+        st.markdown(f"## 📂 {title} 카테고리별 최신 동향")
+        st.caption("아래 탭을 눌러 세부 카테고리의 최근 뉴스를 확인하세요.")
         tab_labels = [f"{t[0]} {t[1]}" for t in sub_topics]
         tabs = st.tabs(tab_labels)
         for tab, (tab_icon, tab_name, tab_query) in zip(tabs, sub_topics):
             with tab:
+                # 탭 안에 명확한 sub-header — 탭 라벨과 뉴스 항목 구분
+                st.markdown(f"#### {tab_icon} {tab_name} 최근 뉴스")
+                st.caption(f"검색어: `{tab_query}`")
                 news = fetch_news_search(tab_query, limit=5, timelimit=_news_timelimit)
                 if news:
-                    for n in news[:4]:
-                        st.markdown(
-                            f"- **[{n['title']}]({n['link']})**  \n"
-                            f"  <small>{n.get('source', '')} | {n.get('published', '')}</small>",
-                            unsafe_allow_html=True,
-                        )
+                    with st.container(border=True):
+                        for n in news[:4]:
+                            st.markdown(
+                                f"📰 **[{n['title']}]({n['link']})**  \n"
+                                f"  <small style='color:#6B7280'>{n.get('source', '')} · 🕒 {n.get('published', '')}</small>",
+                                unsafe_allow_html=True,
+                            )
                     # 카테고리별 경향 분석
                     _render_news_trends(news, tab_name)
                 else:
                     _show_empty_state(f"{tab_name} 관련 뉴스를 가져오지 못했습니다.")
-        st.markdown("---")
+        st.divider()
 
     # ── 자동 뉴스 로딩 + 경향 분석 ──────────────────────────────────────
     if auto_news_query:
-        st.markdown(f"### 📰 {title} 최신 뉴스")
+        st.markdown(f"## 📰 {title} 최신 뉴스")
+        st.caption(f"검색어: `{auto_news_query}`")
         auto_news = fetch_news_search(auto_news_query, limit=8, timelimit=_news_timelimit)
         if auto_news:
-            for n in auto_news[:5]:
-                st.markdown(
-                    f"- **[{n['title']}]({n['link']})**  \n"
-                    f"  <small>{n.get('source', '')} | {n.get('published', '')}</small>",
-                    unsafe_allow_html=True,
-                )
+            with st.container(border=True):
+                for n in auto_news[:5]:
+                    st.markdown(
+                        f"📰 **[{n['title']}]({n['link']})**  \n"
+                        f"  <small style='color:#6B7280'>{n.get('source', '')} · 🕒 {n.get('published', '')}</small>",
+                        unsafe_allow_html=True,
+                    )
             # 뉴스 경향 분석
             _render_news_trends(auto_news, title)
         else:
             _show_empty_state(f"{title} 관련 뉴스를 가져오지 못했습니다.")
-        st.markdown("---")
+        st.divider()
 
     # ── 전문가 검색 & 분석 ────────────────────────────────────────────────
-    st.markdown(f"### 🔍 {title} 전문가 분석")
+    st.markdown(f"## 🔍 {title} 전문가 분석")
     query = st.text_input(f"🔍 {title} 관련 검색어 입력", value=default_query)
 
     col1, col2 = st.columns([2, 1])

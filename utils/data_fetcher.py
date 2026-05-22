@@ -442,7 +442,7 @@ def _fetch_weather_open_meteo(city: str) -> Optional[dict]:
     if not coords:
         try:
             geo_url = f"https://geocoding-api.open-meteo.com/v1/search?name={eng_city}&count=1&language=en"
-            gr = requests.get(geo_url, timeout=8)
+            gr = requests.get(geo_url, timeout=15)
             gr.raise_for_status()
             results = gr.json().get("results", [])
             if results:
@@ -454,7 +454,7 @@ def _fetch_weather_open_meteo(city: str) -> Optional[dict]:
     if not coords and raw_city != eng_city:
         try:
             geo_url = f"https://geocoding-api.open-meteo.com/v1/search?name={raw_city}&count=1&language=ko"
-            gr = requests.get(geo_url, timeout=8)
+            gr = requests.get(geo_url, timeout=15)
             gr.raise_for_status()
             results = gr.json().get("results", [])
             if results:
@@ -462,8 +462,9 @@ def _fetch_weather_open_meteo(city: str) -> Optional[dict]:
         except Exception:
             pass
 
+    # 3. 그래도 좌표를 못 찾았으면 서울 좌표로 폴백 (마지막 안전망)
     if not coords:
-        return None  # 좌표 미확보 → 호출부에서 mock 폴백 처리
+        coords = (37.5665, 126.9780)
 
     lat, lon = coords
     url = (
@@ -473,9 +474,9 @@ def _fetch_weather_open_meteo(city: str) -> Optional[dict]:
         f"&wind_speed_unit=ms"
         f"&timezone=auto"
     )
-    for _ in range(2):
+    for _ in range(3):  # retry 2 → 3
         try:
-            r = requests.get(url, timeout=12)
+            r = requests.get(url, timeout=15)  # 12 → 15
             r.raise_for_status()
             d = r.json()
             current = d.get("current", {})
