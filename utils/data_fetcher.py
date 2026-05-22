@@ -565,12 +565,30 @@ def _fetch_news_local(category: str, limit: int) -> list[dict]:
         return []
 
 def _fetch_traffic_local() -> list[dict]:
-    """Fetch real-time traffic news via DDG news search."""
-    try:
-        if not _DDGS:
+    """Fetch real-time traffic news via DDG news search.
+
+    교통 정보는 실시간성이 핵심이므로 1일 이내 기사를 우선 수집하고,
+    부족할 경우에만 1주일로 확장. published 기준 내림차순 정렬.
+    """
+    def _query_ddg(timelimit: str) -> list:
+        try:
+            if not _DDGS:
+                return []
+            with _DDGS() as ddgs:
+                return list(ddgs.news(
+                    "고속도로 교통 도로 상황",
+                    region="kr-kr",
+                    max_results=8,
+                    timelimit=timelimit,
+                ))
+        except Exception:
             return []
-        with _DDGS() as ddgs:
-            results = list(ddgs.news("고속도로 교통 도로 상황", region="kr-kr", max_results=8))
+
+    try:
+        results = _query_ddg("d")  # 1일 이내 우선
+        if len(results) < 4:
+            # 결과 부족 시 1주일 범위로 확장 후 합산·중복 제거
+            results = results + _query_ddg("w")
         items = []
         for r in results:
             title = _strip_html(r.get("title", ""))
@@ -600,7 +618,10 @@ def _fetch_traffic_local() -> list[dict]:
                 "snippet": body[:120] if body else "",
             })
         if items:
-            return _deduplicate_news(items, title_key="title")
+            items = _deduplicate_news(items, title_key="title")
+            # published 내림차순 정렬 — 최신 기사 우선 노출
+            items.sort(key=lambda v: v.get("published", "") or "", reverse=True)
+            return items
     except Exception:
         pass
     return []
@@ -684,7 +705,7 @@ def fetch_news(category: str = "종합", limit: int = 10) -> list[dict]:
 
     return result[:limit]
 
-@st.cache_data(ttl=1800, show_spinner=False)
+@st.cache_data(ttl=600, show_spinner=False)
 def fetch_traffic_status() -> list[dict]:
     """Fetch traffic data from API or fallback to local execution."""
     if IS_API_MODE:
