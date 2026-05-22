@@ -782,13 +782,20 @@ def _fetch_news_rss(query: str, limit: int = 10, rss_when: str = "7d") -> list[d
         return []
 
 
-def _fetch_web_ddg(query: str, limit: int = 10) -> list[dict]:
-    """Fetch web results via DuckDuckGo — provides real snippets."""
+def _fetch_web_ddg(query: str, limit: int = 10, timelimit: str | None = None) -> list[dict]:
+    """Fetch web results via DuckDuckGo — provides real snippets.
+
+    Args:
+        timelimit: DDG 시간 필터. "d"(1일), "w"(1주), "m"(1개월), "y"(1년). None이면 무필터.
+    """
     try:
         if not _DDGS:
             return []
         with _DDGS() as ddgs:
-            results = list(ddgs.text(query, region="kr-kr", max_results=limit))
+            _kwargs = {"region": "kr-kr", "max_results": limit}
+            if timelimit:
+                _kwargs["timelimit"] = timelimit
+            results = list(ddgs.text(query, **_kwargs))
         items = []
         for r in results:
             title = _strip_html(r.get("title", ""))
@@ -809,8 +816,18 @@ def _fetch_web_ddg(query: str, limit: int = 10) -> list[dict]:
 
 
 @st.cache_data(ttl=900, show_spinner=False)
-def fetch_web_search(query: str, limit: int = 10) -> list[dict]:
-    """Fetch web search results. DuckDuckGo first, then RSS fallback."""
+def fetch_web_search(query: str, limit: int = 10, timelimit: str = "w", sort_by_date: bool = True) -> list[dict]:
+    """Fetch web search results. DuckDuckGo first, then RSS fallback.
+
+    Args:
+        timelimit: "d"(1일), "w"(1주), "m"(1개월), "3m"(3개월), "6m"(6개월), "y"(1년).
+                   기본 "w" — 최신 이슈 우선 노출. DDG는 d/w/m/y만 지원하므로 3m/6m은 m으로 매핑.
+        sort_by_date: published 필드 기준 내림차순 정렬. 기본 True.
+    """
+    _ddg_tl_map = {"d": "d", "w": "w", "m": "m", "3m": "m", "6m": "m", "y": "y"}
+    _rss_when_map = {"d": "1d", "w": "7d", "m": "30d", "3m": "90d", "6m": "180d", "y": "365d"}
+    _ddg_tl = _ddg_tl_map.get(timelimit, "w")
+    _rss_when = _rss_when_map.get(timelimit, "7d")
     results = []
     if IS_API_MODE:
         try:
@@ -820,12 +837,18 @@ def fetch_web_search(query: str, limit: int = 10) -> list[dict]:
         except Exception:
             pass
     if not results:
-        results = _fetch_web_ddg(query, limit=limit)
+        results = _fetch_web_ddg(query, limit=limit, timelimit=_ddg_tl)
     if not results:
-        results = _fetch_news_rss(query, limit=limit)
+        results = _fetch_news_rss(query, limit=limit, rss_when=_rss_when)
+    # 결과 부족 시 시간창 확장 (w → m)으로 보충
+    if len(results) < limit and timelimit == "w":
+        _more_ddg = _fetch_web_ddg(query, limit=limit, timelimit="m")
+        results = _deduplicate_news(results + _more_ddg, title_key="title")
     domain = _detect_domain(query)
     results = _filter_by_domain(results, domain, title_key="title")
     results = _deduplicate_news(results, title_key="title")
+    if sort_by_date:
+        results.sort(key=lambda v: v.get("published", "") or "", reverse=True)
     return results
 
 @st.cache_data(ttl=300, show_spinner=False)

@@ -128,7 +128,7 @@ with tab_oil:
 
     # 유가 관련 뉴스
     st.markdown("### 📰 유가 관련 뉴스")
-    oil_news = fetch_news_search("국제 유가 WTI 브렌트 원유", limit=5)
+    oil_news = fetch_news_search("국제 유가 WTI 브렌트 원유", limit=5, timelimit="d")
     if oil_news:
         for n in oil_news[:4]:
             st.markdown(
@@ -156,8 +156,8 @@ with tab_expert:
 
     if st.button("데이터 분석 및 리포트 갱신", type="primary", use_container_width=True):
         with st.spinner("최신 트렌드 및 뉴스 수집 중..."):
-            web_results = fetch_web_search(query, limit=5)
-            news_results = fetch_news_search(query, limit=5)
+            web_results = fetch_web_search(query, limit=5, timelimit="w")
+            news_results = fetch_news_search(query, limit=5, timelimit="w")
             youtube_results = fetch_youtube_search(query, limit=12, timelimit="w")
 
             dates = pd.date_range(end=datetime.datetime.today(), periods=7).strftime('%m-%d').tolist()

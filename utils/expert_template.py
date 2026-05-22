@@ -396,7 +396,7 @@ def render_expert_page(
 
     if analyze_btn:
         with st.spinner("최신 트렌드 및 뉴스 수집 중..."):
-            web_results = fetch_web_search(query, limit=5)
+            web_results = fetch_web_search(query, limit=5, timelimit=_news_timelimit)
             news_results = fetch_news_search(query, limit=8, timelimit=_news_timelimit)
             _yt_tl = "d" if youtube_sort == "latest" else None
             youtube_results = fetch_youtube_search(query, limit=12, timelimit=_yt_tl)

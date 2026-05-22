@@ -165,7 +165,7 @@ with tab_kr:
         _render_stock_table(POPULAR_KR_STOCKS)
 
     st.markdown("### 📰 국내 증시 뉴스")
-    kr_news = fetch_news_search("코스피 코스닥 국내 증시 시황", limit=5)
+    kr_news = fetch_news_search("코스피 코스닥 국내 증시 시황", limit=5, timelimit="d")
     if kr_news:
         for n in kr_news[:4]:
             st.markdown(
@@ -194,7 +194,7 @@ with tab_us:
         _render_stock_table(POPULAR_US_STOCKS)
 
     st.markdown("### 📰 미국 증시 뉴스")
-    us_news = fetch_news_search("나스닥 S&P500 다우존스 미국 증시", limit=5)
+    us_news = fetch_news_search("나스닥 S&P500 다우존스 미국 증시", limit=5, timelimit="d")
     if us_news:
         for n in us_news[:4]:
             st.markdown(
@@ -336,7 +336,7 @@ with tab_watchlist:
         st.markdown("---")
         st.markdown("### 📰 관심 종목 관련 뉴스")
         wl_query = " ".join(st.session_state.watchlist[:5])
-        wl_news = fetch_news_search(f"주식 {wl_query} 시황", limit=5)
+        wl_news = fetch_news_search(f"주식 {wl_query} 시황", limit=5, timelimit="w")
         if wl_news:
             for n in wl_news[:4]:
                 st.markdown(
@@ -358,8 +358,8 @@ with tab_expert:
 
     if st.button("데이터 분석 및 리포트 갱신", type="primary", use_container_width=True):
         with st.spinner("최신 트렌드 및 뉴스 수집 중..."):
-            web_results = fetch_web_search(query, limit=5)
-            news_results = fetch_news_search(query, limit=5)
+            web_results = fetch_web_search(query, limit=5, timelimit="w")
+            news_results = fetch_news_search(query, limit=5, timelimit="w")
             youtube_results = fetch_youtube_search(query, limit=12, timelimit="w")
 
             dates = pd.date_range(end=datetime.datetime.today(), periods=7).strftime('%m-%d').tolist()

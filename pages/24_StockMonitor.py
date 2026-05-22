@@ -159,7 +159,7 @@ def _render_stock_table(stocks: dict):
 
 def _render_news_block(query: str, label: str):
     """뉴스 블록 렌더링."""
-    news = fetch_news_search(query, limit=5)
+    news = fetch_news_search(query, limit=5, timelimit="d")
     if news:
         for n in news[:4]:
             title = n.get("title", "")
@@ -422,7 +422,7 @@ with tab_watchlist:
         st.markdown("---")
         st.markdown("### 📰 관심 종목 관련 뉴스")
         wl_query = " ".join(st.session_state.watchlist[:5])
-        wl_news = fetch_news_search(f"주식 {wl_query} 시황", limit=5)
+        wl_news = fetch_news_search(f"주식 {wl_query} 시황", limit=5, timelimit="w")
         if wl_news:
             for n in wl_news[:4]:
                 st.markdown(
@@ -452,8 +452,8 @@ with tab_expert:
 
     if st.button("데이터 분석 및 리포트 갱신", type="primary", use_container_width=True, key="expert_btn_mon"):
         with st.spinner("최신 트렌드 및 뉴스 수집 중..."):
-            web_results = fetch_web_search(query, limit=5)
-            news_results = fetch_news_search(query, limit=8)
+            web_results = fetch_web_search(query, limit=5, timelimit="w")
+            news_results = fetch_news_search(query, limit=8, timelimit="w")
             youtube_results = fetch_youtube_search(query, limit=12, timelimit="w")
 
             # KOSPI 기반 트렌드 데이터

@@ -135,7 +135,7 @@ with hc3:
 # ── 교통 뉴스 ──────────────────────────────────────────────────────────
 st.markdown("---")
 st.markdown("### 📰 교통 관련 뉴스")
-_traffic_news = fetch_news_search("교통 도로 고속도로 상황", limit=8)
+_traffic_news = fetch_news_search("교통 도로 고속도로 상황", limit=8, timelimit="d")
 if _traffic_news:
     for i, item in enumerate(_traffic_news):
         src = f" ({item['source']})" if item.get("source") else ""

@@ -147,7 +147,7 @@ st.markdown("## 📊 유가·환율 연동 경제 분석")
 st.markdown("유가 변동과 환율 변화가 한국 경제에 미치는 영향 관련 뉴스입니다.")
 
 with st.spinner("분석 뉴스 로딩 중..."):
-    analysis_news = fetch_news_search("유가 환율 한국 경제 영향 분석", limit=5)
+    analysis_news = fetch_news_search("유가 환율 한국 경제 영향 분석", limit=5, timelimit="w")
 
 if analysis_news:
     for n in analysis_news:
