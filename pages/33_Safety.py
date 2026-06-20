@@ -11,13 +11,13 @@ st.caption("실시간 재난·안전 정보는 공식 채널을 우선 확인하
 
 _sc1, _sc2, _sc3, _sc4 = st.columns(4)
 with _sc1:
-    st.link_button("🌀 기상청 특보", "https://www.weather.go.kr/w/weather/warning/now-warning.do", use_container_width=True)
+    st.link_button("🌀 기상청 특보", "https://www.weather.go.kr/w/special-report/overall.do", use_container_width=True)
 with _sc2:
     st.link_button("🚨 국민재난안전포털", "https://www.safekorea.go.kr/", use_container_width=True)
 with _sc3:
     st.link_button("🔥 산림청 산불정보", "https://fd.forest.go.kr/ffas/", use_container_width=True)
 with _sc4:
-    st.link_button("🌋 KMA 지진정보", "https://www.weather.go.kr/w/eqk-vol/recent-eqk/kor.do", use_container_width=True)
+    st.link_button("🌋 KMA 지진정보", "https://www.weather.go.kr/w/earthquake-volcano/recent.do", use_container_width=True)
 
 _sc5, _sc6, _sc7, _sc8 = st.columns(4)
 with _sc5:
@@ -29,13 +29,21 @@ with _sc7:
 with _sc8:
     st.link_button("📞 행안부 재난문자", "https://www.safekorea.go.kr/idsiSFK/neo/sfk/cs/sfc/dis/disasterMsgList.jsp", use_container_width=True)
 
-# ── 기상청 레이더 임베드 (CORS 차단 시 빈 화면이 보일 수 있음) ──────────────
+# ── 실시간 강수 레이더 (Rainviewer) ───────────────────────────────────────
+# 기상청 정적 합성 PNG(repositary/image/radar/...)는 KMA 가 경로를 폐기해 에러를
+# 반환하므로, 임베드는 Rainviewer(X-Frame-Options: ALLOWALL)로 대체한다.
+# 기상청 공식 특보·레이더는 상단 버튼(새 탭)으로 제공.
 st.markdown("---")
-st.markdown("### 🛰️ 기상청 강수 레이더")
-st.caption("아래가 빈 화면이라면 차단된 것입니다. '🌀 기상청 특보' 버튼으로 새 탭 이동하세요.")
+st.markdown("### 🛰️ 실시간 강수 레이더")
+st.caption("Rainviewer 인터랙티브 레이더(한반도). 기상청 공식 특보·레이더는 상단 버튼으로 새 탭 이동하세요.")
 try:
     import streamlit.components.v1 as components
-    components.iframe("https://www.weather.go.kr/w/repositary/image/radar/composite/202301/RDR_CMP_HSP_PUB_202301010000.png", height=480)
+    components.html(
+        '<iframe width="100%" height="460" '
+        'src="https://www.rainviewer.com/map.html?loc=36.5,127.8,6&oCS=1&oF=0&oAP=1&c=3&o=83&lm=1&layer=radar-1h&sm=1&sn=1" '
+        'frameborder="0" style="border-radius:8px;"></iframe>',
+        height=480,
+    )
 except Exception:
     st.info("레이더 위젯을 불러올 수 없습니다. 상단 '🌀 기상청 특보' 버튼을 이용하세요.")
 
@@ -55,8 +63,8 @@ render_expert_page(
     ],
     external_links=[
         ("🚨 국민재난안전포털", "https://www.safekorea.go.kr/"),
-        ("🌀 기상청 특보", "https://www.weather.go.kr/w/weather/warning/now-warning.do"),
+        ("🌀 기상청 특보", "https://www.weather.go.kr/w/special-report/overall.do"),
         ("🔥 산림청 산불정보", "https://fd.forest.go.kr/ffas/"),
-        ("🌋 지진정보 KMA", "https://www.weather.go.kr/w/eqk-vol/recent-eqk/kor.do"),
+        ("🌋 지진정보 KMA", "https://www.weather.go.kr/w/earthquake-volcano/recent.do"),
     ],
 )

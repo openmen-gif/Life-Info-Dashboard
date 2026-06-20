@@ -158,7 +158,7 @@ with tab4:
                        use_container_width=True)
     with ext_cols[2]:
         st.link_button("⚓ 기상청 해양기상",
-                       "https://www.weather.go.kr/w/ocean/marine-weather.do",
+                       "https://www.weather.go.kr/w/weather/ocean.do",
                        use_container_width=True)
 
 # ── 관련 영상 ─────────────────────────────────────────────────────
