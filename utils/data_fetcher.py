@@ -6,7 +6,10 @@ import feedparser
 import re
 from typing import Optional
 import streamlit as st
-from utils.config import IS_API_MODE, API_BASE_URL, NAVER_CLIENT_ID, NAVER_CLIENT_SECRET, HAS_NAVER
+from utils.config import (
+    IS_API_MODE, API_BASE_URL, NAVER_CLIENT_ID, NAVER_CLIENT_SECRET, HAS_NAVER,
+    OPENWEATHER_API_KEY, YOUTUBE_API_KEY, HAS_YOUTUBE_API,
+)
 
 # 외부 의존성 모듈 레벨 import (lazy: 실패 시 None)
 try:
@@ -474,9 +477,11 @@ def _fetch_weather_open_meteo(city: str) -> Optional[dict]:
         f"&wind_speed_unit=ms"
         f"&timezone=auto"
     )
+    # HF 등 데이터센터 IP는 기본 python-requests UA로 거부될 수 있어 브라우저 UA 부착.
+    _OM_UA = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"}
     for _ in range(3):  # retry 2 → 3
         try:
-            r = requests.get(url, timeout=15)  # 12 → 15
+            r = requests.get(url, timeout=15, headers=_OM_UA)  # 12 → 15
             r.raise_for_status()
             d = r.json()
             current = d.get("current", {})
@@ -499,6 +504,45 @@ def _fetch_weather_open_meteo(city: str) -> Optional[dict]:
         except Exception:
             continue
     return None
+
+
+def _fetch_weather_wttr(city: str) -> Optional[dict]:
+    """wttr.in 무키 날씨 폴백 — Open-Meteo 가 HF 데이터센터 IP에서 막힐 때 대체.
+
+    다른 서비스라 차단 패턴이 달라 한쪽이 막혀도 다른 쪽이 응답할 수 있다.
+    """
+    raw_city = city.strip()
+    eng_city = KOR_CITY_MAP.get(raw_city, raw_city)
+    try:
+        r = requests.get(
+            f"https://wttr.in/{eng_city}?format=j1&lang=ko",
+            headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36"},
+            timeout=12,
+        )
+        r.raise_for_status()
+        cc = (r.json().get("current_condition") or [{}])[0]
+        if not cc or cc.get("temp_C") is None:
+            return None
+        desc = ""
+        if cc.get("lang_ko"):
+            desc = (cc["lang_ko"][0] or {}).get("value", "")
+        if not desc and cc.get("weatherDesc"):
+            desc = (cc["weatherDesc"][0] or {}).get("value", "")
+        coords = CITY_COORDS.get(eng_city, (37.5665, 126.9780))
+        return {
+            "city": city,
+            "lat": coords[0],
+            "lon": coords[1],
+            "temp": round(float(cc.get("temp_C", 0)), 1),
+            "feels_like": round(float(cc.get("FeelsLikeC", cc.get("temp_C", 0))), 1),
+            "humidity": int(cc.get("humidity", 0) or 0),
+            "desc": desc or "현재 날씨",
+            "icon": "01d",
+            "wind_speed": round(float(cc.get("windspeedKmph", 0) or 0) / 3.6, 1),  # km/h → m/s
+            "updated": datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
+        }
+    except Exception:
+        return None
 
 
 def _fetch_weather_local(city: str, api_key: Optional[str]) -> dict:
@@ -526,6 +570,11 @@ def _fetch_weather_local(city: str, api_key: Optional[str]) -> dict:
 
     # 2. Try Open-Meteo (free, no key)
     result = _fetch_weather_open_meteo(city)
+    if result:
+        return result
+
+    # 2.5. wttr.in 무키 폴백 — Open-Meteo 가 HF에서 차단될 때 (다른 서비스라 차단 패턴 다름)
+    result = _fetch_weather_wttr(city)
     if result:
         return result
 
@@ -677,6 +726,9 @@ def _fetch_weather_cached(city: str, api_key: Optional[str]) -> dict:
 
 def fetch_weather(city: str = "Seoul", api_key: Optional[str] = None) -> dict:
     """Fetch weather data. Mock(_sample=True) 결과는 캐싱하지 않고 매 호출마다 재시도."""
+    # HF Secrets 등에 OpenWeatherMap 키가 있으면 우선 사용(클라우드에서 Open-Meteo 차단 대비)
+    if not api_key and OPENWEATHER_API_KEY:
+        api_key = OPENWEATHER_API_KEY
     result = _fetch_weather_cached(city, api_key)
     if result.get("_sample"):
         # 캐시 무효화: 다음 호출에서 다시 시도하도록 캐시 비우기
@@ -684,9 +736,9 @@ def fetch_weather(city: str = "Seoul", api_key: Optional[str] = None) -> dict:
             _fetch_weather_cached.clear()
         except Exception:
             pass
-        # 즉시 한 번 더 직접 시도 (캐시 우회)
+        # 즉시 한 번 더 직접 시도 (캐시 우회) — Open-Meteo → wttr.in 순
         eng_city = KOR_CITY_MAP.get(city.strip(), city.strip())
-        retry = _fetch_weather_open_meteo(eng_city)
+        retry = _fetch_weather_open_meteo(eng_city) or _fetch_weather_wttr(eng_city)
         if retry:
             return retry
     return result
@@ -1394,8 +1446,55 @@ def _yt_search_ddg(query: str, limit: int, youtube_only: bool = False,
 
 
 @st.cache_data(ttl=900, show_spinner=False)
+def _yt_search_api(query: str, limit: int = 12, sort_by_date: bool = False) -> list[dict]:
+    """YouTube Data API v3 검색 — 키(HAS_YOUTUBE_API) 있을 때만 동작, 없으면 [].
+
+    HF 등 클라우드에서 유튜브 스크래핑이 차단되므로 영상 검색의 사실상 유일한
+    안정 클라우드 경로. 발급: console.cloud.google.com → YouTube Data API v3.
+    """
+    if not HAS_YOUTUBE_API:
+        return []
+    try:
+        r = requests.get(
+            "https://www.googleapis.com/youtube/v3/search",
+            params={
+                "part": "snippet",
+                "q": query,
+                "type": "video",
+                "maxResults": min(max(limit, 1), 50),
+                "order": "date" if sort_by_date else "relevance",
+                "regionCode": "KR",
+                "relevanceLanguage": "ko",
+                "key": YOUTUBE_API_KEY,
+            },
+            timeout=8,
+        )
+        r.raise_for_status()
+        items = []
+        for it in r.json().get("items", []):
+            vid = (it.get("id") or {}).get("videoId", "")
+            if not vid:
+                continue
+            sn = it.get("snippet", {})
+            th = sn.get("thumbnails", {})
+            thumb = (th.get("high") or th.get("medium") or th.get("default") or {}).get("url", "")
+            items.append({
+                "vid_id": vid,
+                "title": _strip_html(sn.get("title", "")),
+                "url": f"https://www.youtube.com/watch?v={vid}",
+                "thumbnail": thumb,
+                "platform": "YouTube",
+                "uploader": sn.get("channelTitle", ""),
+                "published": sn.get("publishedAt", ""),
+                "description": _strip_html(sn.get("description", "") or "")[:150],
+            })
+        return items
+    except Exception:
+        return []
+
+
 def fetch_youtube_search(query: str, limit: int = 12, timelimit: str | None = None) -> list[dict]:
-    """Fetch YouTube videos: YouTube 페이지 파싱 → RSS → DDG (3단계).
+    """Fetch YouTube videos: Data API(키) → YouTube 페이지 파싱 → RSS → DDG.
 
     Args:
         timelimit: "d"/"w"/"m"/None — when set, YouTube search sorts by upload date.
@@ -1413,6 +1512,12 @@ def fetch_youtube_search(query: str, limit: int = 12, timelimit: str | None = No
             if key and key not in existing_ids:
                 all_items.append(it)
                 existing_ids.add(key)
+
+    # 0차: YouTube Data API (키 있으면 최우선 — HF 스크래핑 차단 대안)
+    try:
+        _merge(_yt_search_api(query, limit, sort_by_date=sort_by_date))
+    except Exception:
+        pass
 
     # 1차: YouTube 검색 페이지 직접 파싱
     try:

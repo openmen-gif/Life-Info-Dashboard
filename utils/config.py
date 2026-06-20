@@ -23,3 +23,13 @@ IS_API_MODE = (MODE == "api")
 NAVER_CLIENT_ID = os.getenv("NAVER_CLIENT_ID", "")
 NAVER_CLIENT_SECRET = os.getenv("NAVER_CLIENT_SECRET", "")
 HAS_NAVER = bool(NAVER_CLIENT_ID and NAVER_CLIENT_SECRET)
+
+# OpenWeatherMap (선택) — 키 있으면 날씨를 Open-Meteo 보다 먼저 사용.
+# HF에서 Open-Meteo 가 IP 차단/레이트리밋될 때 안정적. 발급: https://openweathermap.org/api (무료)
+OPENWEATHER_API_KEY = os.getenv("OPENWEATHER_API_KEY", "")
+
+# YouTube Data API v3 (선택) — 키 있으면 영상 검색을 스크래핑 대신 공식 API로.
+# HF에서 유튜브 스크래핑이 차단되므로 영상 표시의 사실상 유일한 클라우드 해법.
+# 발급: https://console.cloud.google.com → YouTube Data API v3 사용설정 → API 키 (무료 일 10,000 units)
+YOUTUBE_API_KEY = os.getenv("YOUTUBE_API_KEY", "")
+HAS_YOUTUBE_API = bool(YOUTUBE_API_KEY)
