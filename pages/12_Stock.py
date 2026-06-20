@@ -212,8 +212,8 @@ with tab_compare:
     period_cmp = st.selectbox("비교 기간", ["5d", "1mo", "3mo", "6mo", "1y"], index=1, key="cmp_period")
 
     compare_pairs = [
-        ("069500.KS", "KOSPI", "^GSPC", "S&P 500"),
-        ("229200.KS", "KOSDAQ", "^IXIC", "NASDAQ"),
+        ("069500.KS", "KOSPI", "^IXIC", "NASDAQ"),
+        ("229200.KS", "KOSDAQ", "^GSPC", "S&P 500"),
     ]
 
     for kr_sym, kr_name, us_sym, us_name in compare_pairs:
