@@ -29,9 +29,15 @@ def apply_custom_css():
         [data-testid="stSidebar"] {
             min-width: 0 !important;
         }
-        /* 전체 패딩 축소 */
+        /* 상단 고정 헤더(햄버거 메뉴 바)에 본문/사이드바 상단 글자가 가려지지 않게 여백 확보 */
+        [data-testid="stHeader"] { background: rgba(14,17,23,0.92) !important; }
+        [data-testid="stSidebarContent"],
+        [data-testid="stSidebar"] > div:first-child {
+            padding-top: 2.8rem !important;
+        }
+        /* 전체 패딩 축소 — 단, 상단은 헤더 높이만큼 확보 */
         .block-container {
-            padding: 0.5rem 0.8rem !important;
+            padding: 3rem 0.8rem 0.6rem !important;
             max-width: 100% !important;
         }
         /* 제목 크기 축소 */
@@ -102,7 +108,7 @@ def apply_custom_css():
     /* ── Small Mobile (max-width: 480px) ─────────────────── */
     @media (max-width: 480px) {
         .block-container {
-            padding: 0.3rem 0.5rem !important;
+            padding: 2.9rem 0.5rem 0.4rem !important;  /* 상단 헤더 클리어런스 유지 */
         }
         h1 { font-size: 1.2rem !important; }
         h2 { font-size: 1.05rem !important; }
