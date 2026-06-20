@@ -127,3 +127,43 @@ for i, (cat_title, page_items) in enumerate(_categories):
                 except Exception:
                     # page_link 실패(미등록 페이지 등) 시 텍스트 표시로 폴백
                     st.markdown(f"<small style='color:#9CA3AF'>{icon} {label}</small>", unsafe_allow_html=True)
+
+# ── 데이터 소스 상태 진단 (HF 등 클라우드에서 어떤 소스가 차단되는지 확인용) ──────────
+st.markdown("---")
+with st.expander("🔧 데이터 소스 상태 진단 — 자료가 안 보이면 여기를 펼쳐 확인"):
+    import time as _t
+    from utils.data_fetcher import (
+        fetch_weather as _fw, fetch_news as _fn, fetch_news_search as _fns,
+        fetch_web_search as _fws, fetch_traffic_status as _ft, fetch_youtube_search as _fy,
+    )
+    try:
+        from utils.data_fetcher import fetch_stock_data as _fsd
+    except Exception:
+        _fsd = None
+    _checks = [
+        ("날씨", lambda: _fw("서울")),
+        ("뉴스 카테고리(Google RSS)", lambda: _fn("종합", limit=5)),
+        ("뉴스 검색(DDG→RSS)", lambda: _fns("경제", limit=5, timelimit="m")),
+        ("웹 검색(DDG)", lambda: _fws("경제", limit=5, timelimit="m")),
+        ("교통(DDG→RSS)", lambda: _ft()),
+        ("유튜브(스크래핑/RSS/DDG)", lambda: _fy("뉴스 경제", limit=6)),
+    ]
+    if _fsd:
+        _checks.append(("주식(yfinance)", lambda: _fsd("069500.KS", period="5d")))
+    if st.button("🔍 지금 점검 실행", use_container_width=True):
+        for _name, _call in _checks:
+            try:
+                _t0 = _t.time()
+                _r = _call()
+                _dt = _t.time() - _t0
+                if isinstance(_r, dict):
+                    _good = (not _r.get("_sample")) and _r.get("ok", True)
+                    _txt = "OK" if _good else "빈/샘플"
+                else:
+                    _cnt = len(_r) if _r else 0
+                    _good = _cnt > 0
+                    _txt = f"{_cnt}건"
+                st.write(f"{'✅' if _good else '⚠️'} **{_name}**: {_txt} · {_dt:.1f}s")
+            except Exception as _e:
+                st.write(f"❌ **{_name}**: 오류 {type(_e).__name__} — {str(_e)[:90]}")
+        st.caption("✅정상 · ⚠️빈 결과(차단 의심) · ❌오류. 이 결과를 알려주시면 차단된 소스만 정밀 수정합니다.")
