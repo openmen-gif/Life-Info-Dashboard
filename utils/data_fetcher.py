@@ -6,7 +6,7 @@ import feedparser
 import re
 from typing import Optional
 import streamlit as st
-from utils.config import IS_API_MODE, API_BASE_URL
+from utils.config import IS_API_MODE, API_BASE_URL, NAVER_CLIENT_ID, NAVER_CLIENT_SECRET, HAS_NAVER
 
 # 외부 의존성 모듈 레벨 import (lazy: 실패 시 None)
 try:
@@ -832,6 +832,42 @@ def _fetch_news_rss(query: str, limit: int = 10, rss_when: str = "7d") -> list[d
         return []
 
 
+def _fetch_news_naver(query: str, limit: int = 10) -> list[dict]:
+    """Naver 검색 API 뉴스. 키(HAS_NAVER) 있을 때만 동작 — 없으면 즉시 [].
+
+    클라우드(HF)에서 DDG/Google RSS 와 달리 레이트리밋이 없어 모든 카테고리가
+    안정적으로 로드된다. 발급: https://developers.naver.com/apps/ (무료 일 25,000건).
+    """
+    if not HAS_NAVER:
+        return []
+    try:
+        r = requests.get(
+            "https://openapi.naver.com/v1/search/news.json",
+            headers={
+                "X-Naver-Client-Id": NAVER_CLIENT_ID,
+                "X-Naver-Client-Secret": NAVER_CLIENT_SECRET,
+            },
+            params={"query": query, "display": min(max(limit, 1), 100), "sort": "date"},
+            timeout=8,
+        )
+        r.raise_for_status()
+        items = []
+        for it in r.json().get("items", []):
+            title = _strip_html(it.get("title", ""))
+            desc = _strip_html(it.get("description", "") or "")[:200]
+            snippet = desc if (desc and not _is_similar(desc, title)) else ""
+            items.append({
+                "title": title,
+                "link": it.get("originallink") or it.get("link", ""),
+                "source": "",
+                "published": it.get("pubDate", ""),
+                "snippet": snippet,
+            })
+        return items
+    except Exception:
+        return []
+
+
 def _fetch_web_ddg(query: str, limit: int = 10, timelimit: str | None = None) -> list[dict]:
     """Fetch web results via DuckDuckGo — provides real snippets.
 
@@ -886,6 +922,8 @@ def fetch_web_search(query: str, limit: int = 10, timelimit: str = "w", sort_by_
             results = r.json().get("results", [])
         except Exception:
             pass
+    if not results:
+        results = _fetch_news_naver(query, limit=limit)   # 키 있으면 최우선(레이트리밋 없음)
     _used_ddg = False
     if not results:
         results = _fetch_web_ddg(query, limit=limit, timelimit=_ddg_tl)
@@ -1426,6 +1464,8 @@ def fetch_news_search(query: str, limit: int = 10, timelimit: str = "m") -> list
             news = r.json().get("news", [])
         except Exception:
             pass
+    if not news:
+        news = _fetch_news_naver(query, limit=limit)   # 키 있으면 최우선(레이트리밋 없음)
     _rss_done = False
     if not news:
         news = _fetch_news_ddg(query, limit=limit, timelimit=_ddg_tl)
