@@ -6,33 +6,6 @@ import pandas as pd
 from utils.data_fetcher import fetch_web_search, fetch_news_search, fetch_youtube_search
 from utils.report_downloader import render_download_buttons
 
-
-def _parallel_map(fn, items, max_workers=6):
-    """@st.cache_data 데이터 fetch 들을 worker 스레드에서 병렬 호출.
-
-    순차(N×fetch) → 동시(~1×fetch)로 콜드 로드 단축. fetch 들은 순수 데이터라 스레드 안전.
-    Streamlit 캐시가 worker 스레드에서도 동작하도록 run context 를 부착하고, 실패 시 순차 폴백.
-    """
-    items = list(items)
-    if not items:
-        return []
-    if len(items) == 1:
-        return [fn(items[0])]
-    try:
-        from concurrent.futures import ThreadPoolExecutor
-        from streamlit.runtime.scriptrunner import add_script_run_ctx, get_script_run_ctx
-        ctx = get_script_run_ctx()
-
-        def _wrap(x):
-            add_script_run_ctx(ctx=ctx)
-            return fn(x)
-
-        with ThreadPoolExecutor(max_workers=min(len(items), max_workers)) as ex:
-            return list(ex.map(_wrap, items))
-    except Exception:
-        return [fn(x) for x in items]  # 병렬 실패 시 순차 폴백
-
-
 # ── 감성 분석 키워드 사전 ─────────────────────────────────────────────────
 _POSITIVE_WORDS = {
     "상승", "급등", "호재", "성장", "개선", "회복", "활황", "강세", "최고",
@@ -348,11 +321,9 @@ def render_expert_page(
         st.markdown(f"### 📊 {title} 실시간 지표")
         cols = st.columns(min(len(tickers), 4))
         ticker_items = list(tickers.items())
-        # 종목별 5d 시세 병렬 prefetch (순차 N×1.3s → 동시 ~1.3s)
-        _sd5 = _parallel_map(lambda s: fetch_stock_data(s, period="5d"), [s for s, _ in ticker_items])
         for i, (symbol, name) in enumerate(ticker_items):
             with cols[i % len(cols)]:
-                d = _sd5[i]
+                d = fetch_stock_data(symbol, period="5d")
                 if d.get("ok"):
                     price_fmt = f"${d['price']:,.2f}" if not symbol.endswith((".KS", ".KQ")) else f"{d['price']:,.0f}"
                     delta = f"{d['change']:+,.2f} ({d['change_pct']:+.2f}%)"
@@ -380,18 +351,12 @@ def render_expert_page(
         st.caption("아래 탭을 눌러 세부 카테고리의 최근 뉴스를 확인하세요.")
         tab_labels = [f"{t[0]} {t[1]}" for t in sub_topics]
         tabs = st.tabs(tab_labels)
-        # st.tabs 는 모든 탭 내용을 로드 시 실행 → 탭별 뉴스를 병렬 prefetch (순차 N×0.9s → 동시 ~0.9s)
-        _subq = list(dict.fromkeys(t[2] for t in sub_topics))
-        _subnews = dict(zip(_subq, _parallel_map(
-            lambda q: fetch_news_search(q, limit=5, timelimit=_news_timelimit), _subq)))
         for tab, (tab_icon, tab_name, tab_query) in zip(tabs, sub_topics):
             with tab:
                 # 탭 안에 명확한 sub-header — 탭 라벨과 뉴스 항목 구분
                 st.markdown(f"#### {tab_icon} {tab_name} 최근 뉴스")
                 st.caption(f"검색어: `{tab_query}`")
-                news = _subnews.get(tab_query)
-                if news is None:
-                    news = fetch_news_search(tab_query, limit=5, timelimit=_news_timelimit)
+                news = fetch_news_search(tab_query, limit=5, timelimit=_news_timelimit)
                 if news:
                     with st.container(border=True):
                         for n in news[:4]:
@@ -554,15 +519,11 @@ def render_expert_page(
     else:
         st.info("상단 버튼을 눌러 데이터를 수집하고 인사이트를 확인하세요.")
 
-    # ── 관련 YouTube 영상 (지연 로드) ─────────────────────────────────────
+    # ── 관련 YouTube 영상 (항상 표시) ─────────────────────────────────────
     st.markdown("---")
     _sort_label = "최신" if youtube_sort == "latest" else "인기"
     st.markdown(f"## 🎬 {title} 관련 {_sort_label} 영상")
-    # 유튜브 3단계 검색(YouTube파싱+RSS+DDG, ~3s)은 매 페이지 로드를 막으므로 버튼 클릭 시 지연 로드
-    _ep_yt_key = f"_ep_yt_{title}"
-    if st.session_state.get(_ep_yt_key) or st.button(f"🎬 {title} 영상 불러오기", key=f"yt_load_{title}", use_container_width=True):
-        st.session_state[_ep_yt_key] = True
-        render_youtube_section(f"{title} {default_query.split()[0]} 분석 동향", sort=youtube_sort)
+    render_youtube_section(f"{title} {default_query.split()[0]} 분석 동향", sort=youtube_sort)
 
     # ── 외부 참고 링크 ────────────────────────────────────────────────────
     if external_links:

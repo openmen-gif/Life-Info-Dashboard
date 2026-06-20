@@ -39,20 +39,14 @@ with _tc3:
     st.link_button("🚗 ITS 실시간 교통", "https://www.its.go.kr/", use_container_width=True)
 
 st.markdown("---")
-# 보고서 3종(Word/Excel/txt) 생성은 무거워 홈 최초 로드를 막으므로 버튼 클릭 시 지연 로드
-if st.session_state.get("_home_dl") or st.button("📥 통합 보고서 생성/다운로드", use_container_width=True):
-    st.session_state["_home_dl"] = True
-    render_download_buttons()
+render_download_buttons()
 
-# ── 관련 영상 (지연 로드) ─────────────────────────────────────────
+# ── 관련 영상 ─────────────────────────────────────────────────────
 st.markdown("---")
 _today_str = datetime.datetime.now().strftime("%Y년 %m월 %d일")
 st.markdown(f"## 🎬 {_today_str} 생활정보 영상")
-# 유튜브 3단계 검색(YouTube파싱+RSS+DDG)은 콜드 캐시 시 수~십초 — 버튼 클릭 시 지연 로드
-if st.session_state.get("_home_yt") or st.button("🎬 오늘 영상 불러오기", use_container_width=True):
-    st.session_state["_home_yt"] = True
-    from utils.expert_template import render_youtube_section
-    _yt_home = render_youtube_section("오늘 뉴스 시사 경제", sort="latest")
+from utils.expert_template import render_youtube_section
+_yt_home = render_youtube_section("오늘 뉴스 시사 경제", sort="latest")
 
 st.markdown("---")
 st.markdown("## 📚 전체 카테고리 (38개 페이지)")
@@ -127,43 +121,3 @@ for i, (cat_title, page_items) in enumerate(_categories):
                 except Exception:
                     # page_link 실패(미등록 페이지 등) 시 텍스트 표시로 폴백
                     st.markdown(f"<small style='color:#9CA3AF'>{icon} {label}</small>", unsafe_allow_html=True)
-
-# ── 데이터 소스 상태 진단 (HF 등 클라우드에서 어떤 소스가 차단되는지 확인용) ──────────
-st.markdown("---")
-with st.expander("🔧 데이터 소스 상태 진단 — 자료가 안 보이면 여기를 펼쳐 확인"):
-    import time as _t
-    from utils.data_fetcher import (
-        fetch_weather as _fw, fetch_news as _fn, fetch_news_search as _fns,
-        fetch_web_search as _fws, fetch_traffic_status as _ft, fetch_youtube_search as _fy,
-    )
-    try:
-        from utils.data_fetcher import fetch_stock_data as _fsd
-    except Exception:
-        _fsd = None
-    _checks = [
-        ("날씨", lambda: _fw("서울")),
-        ("뉴스 카테고리(Google RSS)", lambda: _fn("종합", limit=5)),
-        ("뉴스 검색(DDG→RSS)", lambda: _fns("경제", limit=5, timelimit="m")),
-        ("웹 검색(DDG)", lambda: _fws("경제", limit=5, timelimit="m")),
-        ("교통(DDG→RSS)", lambda: _ft()),
-        ("유튜브(스크래핑/RSS/DDG)", lambda: _fy("뉴스 경제", limit=6)),
-    ]
-    if _fsd:
-        _checks.append(("주식(yfinance)", lambda: _fsd("069500.KS", period="5d")))
-    if st.button("🔍 지금 점검 실행", use_container_width=True):
-        for _name, _call in _checks:
-            try:
-                _t0 = _t.time()
-                _r = _call()
-                _dt = _t.time() - _t0
-                if isinstance(_r, dict):
-                    _good = (not _r.get("_sample")) and _r.get("ok", True)
-                    _txt = "OK" if _good else "빈/샘플"
-                else:
-                    _cnt = len(_r) if _r else 0
-                    _good = _cnt > 0
-                    _txt = f"{_cnt}건"
-                st.write(f"{'✅' if _good else '⚠️'} **{_name}**: {_txt} · {_dt:.1f}s")
-            except Exception as _e:
-                st.write(f"❌ **{_name}**: 오류 {type(_e).__name__} — {str(_e)[:90]}")
-        st.caption("✅정상 · ⚠️빈 결과(차단 의심) · ❌오류. 이 결과를 알려주시면 차단된 소스만 정밀 수정합니다.")
