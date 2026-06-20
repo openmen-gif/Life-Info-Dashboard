@@ -349,26 +349,40 @@ def render_expert_page(
     if sub_topics:
         st.markdown(f"## 📂 {title} 카테고리별 최신 동향")
         st.caption("아래 탭을 눌러 세부 카테고리의 최근 뉴스를 확인하세요.")
+        st.caption("아래 탭을 누르고 '뉴스 불러오기'를 클릭하면 해당 카테고리만 로드됩니다 (클라우드 레이트리밋 회피·속도 최적화).")
         tab_labels = [f"{t[0]} {t[1]}" for t in sub_topics]
         tabs = st.tabs(tab_labels)
-        for tab, (tab_icon, tab_name, tab_query) in zip(tabs, sub_topics):
+        for _ti, (tab, (tab_icon, tab_name, tab_query)) in enumerate(zip(tabs, sub_topics)):
             with tab:
                 # 탭 안에 명확한 sub-header — 탭 라벨과 뉴스 항목 구분
                 st.markdown(f"#### {tab_icon} {tab_name} 최근 뉴스")
                 st.caption(f"검색어: `{tab_query}`")
-                news = fetch_news_search(tab_query, limit=5, timelimit=_news_timelimit)
-                if news:
-                    with st.container(border=True):
-                        for n in news[:4]:
-                            st.markdown(
-                                f"📰 **[{n['title']}]({n['link']})**  \n"
-                                f"  <small style='color:#6B7280'>{n.get('source', '')} · 🕒 {n.get('published', '')}</small>",
-                                unsafe_allow_html=True,
-                            )
-                    # 카테고리별 경향 분석
-                    _render_news_trends(news, tab_name)
-                else:
-                    _show_empty_state(f"{tab_name} 관련 뉴스를 가져오지 못했습니다.")
+                # 지연 로드: 첫 탭만 자동, 나머지는 버튼 클릭 시 fetch.
+                # HF 클라우드에서 모든 탭을 콜드 로드에 한꺼번에 fetch하면 같은 IP의
+                # DDG/RSS 요청이 버스트로 몰려 레이트리밋 → 첫 탭만 뜨고 나머지 빈값이 됨.
+                # 요청을 사용자 상호작용에 분산시켜 순차 부하를 낮춘다.
+                _lazy_key = f"_subnews_{title}_{_ti}"
+                _do_fetch = (_ti == 0) or st.session_state.get(_lazy_key)
+                if not _do_fetch:
+                    if st.button(f"📰 {tab_name} 뉴스 불러오기", key=f"btn_{_lazy_key}", use_container_width=True):
+                        st.session_state[_lazy_key] = True
+                        _do_fetch = True
+                if _do_fetch:
+                    news = fetch_news_search(tab_query, limit=5, timelimit=_news_timelimit)
+                    if news:
+                        with st.container(border=True):
+                            for n in news[:4]:
+                                st.markdown(
+                                    f"📰 **[{n['title']}]({n['link']})**  \n"
+                                    f"  <small style='color:#6B7280'>{n.get('source', '')} · 🕒 {n.get('published', '')}</small>",
+                                    unsafe_allow_html=True,
+                                )
+                        # 카테고리별 경향 분석
+                        _render_news_trends(news, tab_name)
+                    else:
+                        _show_empty_state(f"{tab_name} 관련 뉴스를 가져오지 못했습니다.")
+                elif not _do_fetch:
+                    st.caption("👆 위 버튼을 눌러 이 카테고리 뉴스를 불러오세요.")
         st.divider()
 
     # ── 자동 뉴스 로딩 + 경향 분석 ──────────────────────────────────────

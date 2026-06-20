@@ -886,12 +886,15 @@ def fetch_web_search(query: str, limit: int = 10, timelimit: str = "w", sort_by_
             results = r.json().get("results", [])
         except Exception:
             pass
+    _used_ddg = False
     if not results:
         results = _fetch_web_ddg(query, limit=limit, timelimit=_ddg_tl)
+        _used_ddg = bool(results)
     if not results:
         results = _fetch_news_rss(query, limit=limit, rss_when=_rss_when)
-    # 결과 부족 시 시간창 확장 (w → m)으로 보충
-    if len(results) < limit and timelimit == "w":
+    # DDG가 일부만 반환했을 때만 시간창 확장(w→m)으로 보충 — DDG 빈 결과면 재호출도
+    # 레이트리밋만 늘리므로 생략(HF 요청 수 절감).
+    if _used_ddg and len(results) < limit and timelimit == "w":
         _more_ddg = _fetch_web_ddg(query, limit=limit, timelimit="m")
         results = _deduplicate_news(results + _more_ddg, title_key="title")
     domain = _detect_domain(query)
@@ -1423,12 +1426,15 @@ def fetch_news_search(query: str, limit: int = 10, timelimit: str = "m") -> list
             news = r.json().get("news", [])
         except Exception:
             pass
+    _rss_done = False
     if not news:
         news = _fetch_news_ddg(query, limit=limit, timelimit=_ddg_tl)
     if not news:
         news = _fetch_news_rss(query, limit=limit, rss_when=_rss_when)
-    # DDG 결과 부족 시 RSS로 보충
-    if len(news) < limit:
+        _rss_done = True
+    # DDG가 일부만 반환했을 때만 RSS로 보충 — DDG 빈 결과면 RSS는 위에서 이미 호출했으므로
+    # 재호출은 같은 HF IP 요청만 늘려 레이트리밋을 악화시킨다(중복 제거).
+    if not _rss_done and len(news) < limit:
         more = _fetch_news_rss(query, limit=limit, rss_when=_rss_when)
         news = _deduplicate_news(news + more, title_key="title")
     domain = _detect_domain(query)
