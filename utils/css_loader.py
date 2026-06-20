@@ -35,9 +35,11 @@ def apply_custom_css():
         [data-testid="stSidebar"] > div:first-child {
             padding-top: 2.8rem !important;
         }
-        /* 전체 패딩 축소 — 단, 상단은 헤더 높이만큼 확보 */
-        .block-container {
-            padding: 3rem 0.8rem 0.6rem !important;
+        /* 전체 패딩 축소 — 단, 상단은 고정 헤더 높이만큼 확보 (구/신 컨테이너 모두 타깃) */
+        .block-container,
+        [data-testid="stMainBlockContainer"],
+        [data-testid="stAppViewBlockContainer"] {
+            padding: 3.8rem 0.8rem 0.6rem !important;
             max-width: 100% !important;
         }
         /* 제목 크기 축소 */
@@ -107,8 +109,10 @@ def apply_custom_css():
 
     /* ── Small Mobile (max-width: 480px) ─────────────────── */
     @media (max-width: 480px) {
-        .block-container {
-            padding: 2.9rem 0.5rem 0.4rem !important;  /* 상단 헤더 클리어런스 유지 */
+        .block-container,
+        [data-testid="stMainBlockContainer"],
+        [data-testid="stAppViewBlockContainer"] {
+            padding: 3.6rem 0.5rem 0.4rem !important;  /* 상단 헤더 클리어런스 유지 */
         }
         h1 { font-size: 1.2rem !important; }
         h2 { font-size: 1.05rem !important; }
