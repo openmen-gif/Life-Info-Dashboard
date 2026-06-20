@@ -1569,6 +1569,12 @@ def _fetch_youtube_cached(query: str, limit: int = 12, timelimit: str | None = N
     return []
 
 
+# 여러 페이지의 '데이터 갱신' 버튼이 fetch_youtube_search.clear() 를 호출한다.
+# 래퍼로 분리하며 @st.cache_data 가 _fetch_youtube_cached 로 옮겨가 .clear() 가
+# 사라졌으므로, 실제 캐시의 clear 를 래퍼에 위임 부착해 호환을 유지한다.
+fetch_youtube_search.clear = _fetch_youtube_cached.clear
+
+
 @st.cache_data(ttl=900, show_spinner=False)
 def fetch_news_search(query: str, limit: int = 10, timelimit: str = "m") -> list[dict]:
     """Fetch news search results. DuckDuckGo first (better snippets), then RSS fallback.
