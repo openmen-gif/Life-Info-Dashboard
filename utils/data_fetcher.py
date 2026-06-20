@@ -1493,8 +1493,12 @@ def _yt_search_api(query: str, limit: int = 12, sort_by_date: bool = False) -> l
         return []
 
 
+@st.cache_data(ttl=1800, show_spinner=False)
 def fetch_youtube_search(query: str, limit: int = 12, timelimit: str | None = None) -> list[dict]:
     """Fetch YouTube videos: Data API(키) → YouTube 페이지 파싱 → RSS → DDG.
+
+    캐시(30분): 같은 쿼리 재렌더 시 재호출 방지 — 특히 YouTube Data API 할당량
+    (검색 1회=100 units, 무료 일 10,000) 보호 + 콜드로드 속도.
 
     Args:
         timelimit: "d"/"w"/"m"/None — when set, YouTube search sorts by upload date.
