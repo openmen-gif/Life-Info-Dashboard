@@ -6,6 +6,14 @@ import pandas as pd
 from utils.data_fetcher import fetch_web_search, fetch_news_search, fetch_youtube_search
 from utils.report_downloader import render_download_buttons
 
+
+def _qkey(query: str) -> str:
+    """쿼리 기반 세션키 — 앞 20자 절단은 유사 쿼리끼리 같은 키가 돼 페이지/정렬 상태를
+    공유하는 버그를 유발하므로, 전체 쿼리 해시(10자)로 충돌을 방지한다."""
+    import hashlib
+    return hashlib.md5((query or "").encode("utf-8")).hexdigest()[:10]
+
+
 # ── 감성 분석 키워드 사전 ─────────────────────────────────────────────────
 _POSITIVE_WORDS = {
     "상승", "급등", "호재", "성장", "개선", "회복", "활황", "강세", "최고",
@@ -105,8 +113,12 @@ def _parse_view_count(vc) -> int:
 
 
 def _show_empty_state(msg: str):
-    """데이터 없음 상태 + 재시도 안내."""
-    st.info(f"{msg} 상단 🔄 데이터 갱신 버튼을 눌러 다시 시도하세요.")
+    """데이터 없음 상태 + 재시도 안내 — 빈 결과/레이트리밋/일시 실패를 구분 안내."""
+    st.warning(
+        f"⚠️ {msg}\n\n"
+        "클라우드(HF) IP 레이트리밋이거나 일시적 수집 실패일 수 있어요. "
+        "상단 **🔄 데이터 갱신**을 누르거나 잠시 후 새로고침하면 보통 복구됩니다."
+    )
 
 
 _PLATFORM_ICONS = {
@@ -203,7 +215,7 @@ def render_youtube_section(query: str, limit: int = 12, per_page: int = 4,
         return []
 
     # Sort toggle checkbox
-    sort_key = f"sort_toggle_{query[:20]}"
+    sort_key = f"sort_toggle_{_qkey(query)}"
     if sort == "latest":
         use_views = st.checkbox("조회수 많은 순으로 보기", key=sort_key, value=False)
         active_sort = "views" if use_views else "latest"
@@ -230,7 +242,7 @@ def render_youtube_section(query: str, limit: int = 12, per_page: int = 4,
     mc3.metric("채널 수", f"{len(channels)}개")
 
     # Pagination (공통 헬퍼 사용)
-    page_key = f"yt_page_{query[:20]}"
+    page_key = f"yt_page_{_qkey(query)}"
     _render_paginated_videos(videos_sorted, page_key, per_page)
 
     return videos_sorted

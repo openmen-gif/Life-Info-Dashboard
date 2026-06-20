@@ -74,10 +74,15 @@ def apply_custom_css():
             font-size: 0.8rem !important;
             padding: 6px 10px !important;
         }
-        /* 버튼 크기 */
+        /* 버튼 — 터치 타깃 최소 44px 확보(Apple/Google 모바일 접근성 권장) */
         .stButton > button {
-            font-size: 0.8rem !important;
-            padding: 6px 12px !important;
+            font-size: 0.85rem !important;
+            padding: 11px 16px !important;
+            min-height: 44px !important;
+        }
+        /* 링크/다운로드 버튼도 동일 터치 타깃 */
+        .stLinkButton > a, .stDownloadButton > button {
+            min-height: 44px !important;
         }
         /* info-card 모바일 */
         .info-card {
@@ -93,9 +98,13 @@ def apply_custom_css():
             max-width: 100% !important;
             height: auto !important;
         }
-        /* 테이블 가로 스크롤 */
+        /* 테이블 가로 스크롤 + 스크롤바 가시화 (잘린 것처럼 보여 스크롤 가능을 모르는 문제 해소) */
         [data-testid="stDataFrame"] {
             overflow-x: auto !important;
+        }
+        [data-testid="stDataFrame"]::-webkit-scrollbar { height: 6px; }
+        [data-testid="stDataFrame"]::-webkit-scrollbar-thumb {
+            background: #6B7280; border-radius: 3px;
         }
         /* 슬라이더 */
         .stSlider {
