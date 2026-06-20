@@ -76,21 +76,17 @@ with tab1:
             st.metric(c, f"{w['temp']}°C", f"{w['desc']}")
 
 with tab2:
-    st.markdown("### 🇰🇷 국내 실시간 기상 레이더 (기상청·Rainviewer)")
+    st.markdown("### 🇰🇷 국내 실시간 기상 레이더 (Rainviewer)")
     st.info(
-        "**상단**: 기상청(KMA) 공식 한반도 강수 레이더 합성영상 (정지 이미지·자동 갱신). "
-        "**하단**: Rainviewer 인터랙티브 강수 지도 (확대/축소·재생 가능)."
+        "인터랙티브 강수 레이더 — 확대/축소·시간 재생 가능. "
+        "기상청(KMA) 공식 레이더·위성·낙뢰는 아래 **바로가기**로 새 창에서 열립니다."
     )
+    # 기상청 정적 합성 PNG(rdr_CMP_HSP_PUB_FQC.png)는 KMA 가 경로를 폐기해 이미지 대신
+    # text/html 에러("서비스 이용에 불편을 드려 죄송합니다")를 반환하므로 제거했다.
+    # 임베드 레이더는 Rainviewer(X-Frame-Options: ALLOWALL)로 대체하고, KMA 공식
+    # 레이더는 하단 바로가기 링크(새 창)로 제공한다.
 
-    # 1. 기상청 공식 합성 레이더 PNG (캐시버스터로 자동 갱신)
-    import datetime as _dt2
-    _bust = _dt2.datetime.now().strftime("%Y%m%d%H%M")
-    kma_img = f"https://www.weather.go.kr/w/repositary/image/rdr/rdr_CMP_HSP_PUB_FQC.png?ts={_bust}"
-    st.image(kma_img, caption=f"기상청 합성 레이더 (PUB_FQC) · 갱신 {_bust[8:10]}:{_bust[10:12]}", use_container_width=True)
-
-    st.markdown("---")
-
-    # 2. Rainviewer 인터랙티브 강수 레이더 (X-Frame-Options: ALLOWALL 확인)
+    # Rainviewer 인터랙티브 강수 레이더
     html_rv = f"""
     <span style="display:none" data-city="{weather['city']}-{lat}-{lon}-rv"></span>
     <iframe
