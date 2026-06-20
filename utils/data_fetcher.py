@@ -1493,12 +1493,24 @@ def _yt_search_api(query: str, limit: int = 12, sort_by_date: bool = False) -> l
         return []
 
 
-@st.cache_data(ttl=1800, show_spinner=False)
 def fetch_youtube_search(query: str, limit: int = 12, timelimit: str | None = None) -> list[dict]:
-    """Fetch YouTube videos: Data API(키) → YouTube 페이지 파싱 → RSS → DDG.
+    """Fetch YouTube videos. 빈 결과는 캐시하지 않아 다음 렌더에서 재시도한다.
 
-    캐시(30분): 같은 쿼리 재렌더 시 재호출 방지 — 특히 YouTube Data API 할당량
-    (검색 1회=100 units, 무료 일 10,000) 보호 + 콜드로드 속도.
+    스크래핑(HF에서 flaky)이 일시적으로 []를 주면 캐시 고정 대신 재시도해 복구.
+    비어있지 않은 결과만 캐시(30분) → YouTube Data API 할당량 보호 + 속도.
+    """
+    result = _fetch_youtube_cached(query, limit, timelimit)
+    if not result:
+        try:
+            _fetch_youtube_cached.clear()
+        except Exception:
+            pass
+    return result
+
+
+@st.cache_data(ttl=1800, show_spinner=False)
+def _fetch_youtube_cached(query: str, limit: int = 12, timelimit: str | None = None) -> list[dict]:
+    """실제 수집: Data API(키) → YouTube 페이지 파싱 → RSS → DDG (4단계 병합).
 
     Args:
         timelimit: "d"/"w"/"m"/None — when set, YouTube search sorts by upload date.
