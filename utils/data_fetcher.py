@@ -1541,17 +1541,24 @@ def _fetch_youtube_cached(query: str, limit: int = 12, timelimit: str | None = N
     except Exception:
         pass
 
-    # 2차: YouTube 채널 RSS — 항상 시도
-    try:
-        _merge(_yt_search_rss(query, limit))
-    except Exception:
-        pass
+    def _enough() -> bool:
+        # 도메인 필터 후에도 limit 만큼 남으면 충분 → 느린 후속 단계 생략(표시 건수 보존).
+        return len(_filter_by_domain(all_items, domain, title_key="title")) >= limit
 
-    # 3차: DDG videos — 항상 시도 (다양한 플랫폼 + 최신 영상 보강)
-    try:
-        _merge(_yt_search_ddg(query, limit, timelimit=timelimit))
-    except Exception:
-        pass
+    # 2차: YouTube 채널 RSS — 1차(스크래핑)로 부족할 때만. RSS 가 ~2초로 가장 느려,
+    # 1차가 보통 limit 을 채우면 이 단계를 건너뛰어 영상 fetch 를 ~2.6s 단축한다.
+    if not _enough():
+        try:
+            _merge(_yt_search_rss(query, limit))
+        except Exception:
+            pass
+
+    # 3차: DDG videos — 여전히 부족할 때만 (다양한 플랫폼 + 최신 영상 보강)
+    if not _enough():
+        try:
+            _merge(_yt_search_ddg(query, limit, timelimit=timelimit))
+        except Exception:
+            pass
 
     if all_items:
         filtered = _filter_by_domain(all_items, domain, title_key="title")
