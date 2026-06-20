@@ -39,14 +39,20 @@ with _tc3:
     st.link_button("🚗 ITS 실시간 교통", "https://www.its.go.kr/", use_container_width=True)
 
 st.markdown("---")
-render_download_buttons()
+# 보고서 3종(Word/Excel/txt) 생성은 무거워 홈 최초 로드를 막으므로 버튼 클릭 시 지연 로드
+if st.session_state.get("_home_dl") or st.button("📥 통합 보고서 생성/다운로드", use_container_width=True):
+    st.session_state["_home_dl"] = True
+    render_download_buttons()
 
-# ── 관련 영상 ─────────────────────────────────────────────────────
+# ── 관련 영상 (지연 로드) ─────────────────────────────────────────
 st.markdown("---")
 _today_str = datetime.datetime.now().strftime("%Y년 %m월 %d일")
 st.markdown(f"## 🎬 {_today_str} 생활정보 영상")
-from utils.expert_template import render_youtube_section
-_yt_home = render_youtube_section("오늘 뉴스 시사 경제", sort="latest")
+# 유튜브 3단계 검색(YouTube파싱+RSS+DDG)은 콜드 캐시 시 수~십초 — 버튼 클릭 시 지연 로드
+if st.session_state.get("_home_yt") or st.button("🎬 오늘 영상 불러오기", use_container_width=True):
+    st.session_state["_home_yt"] = True
+    from utils.expert_template import render_youtube_section
+    _yt_home = render_youtube_section("오늘 뉴스 시사 경제", sort="latest")
 
 st.markdown("---")
 st.markdown("## 📚 전체 카테고리 (38개 페이지)")

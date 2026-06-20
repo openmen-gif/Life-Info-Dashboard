@@ -519,11 +519,15 @@ def render_expert_page(
     else:
         st.info("상단 버튼을 눌러 데이터를 수집하고 인사이트를 확인하세요.")
 
-    # ── 관련 YouTube 영상 (항상 표시) ─────────────────────────────────────
+    # ── 관련 YouTube 영상 (지연 로드) ─────────────────────────────────────
     st.markdown("---")
     _sort_label = "최신" if youtube_sort == "latest" else "인기"
     st.markdown(f"## 🎬 {title} 관련 {_sort_label} 영상")
-    render_youtube_section(f"{title} {default_query.split()[0]} 분석 동향", sort=youtube_sort)
+    # 유튜브 3단계 검색(YouTube파싱+RSS+DDG, ~3s)은 매 페이지 로드를 막으므로 버튼 클릭 시 지연 로드
+    _ep_yt_key = f"_ep_yt_{title}"
+    if st.session_state.get(_ep_yt_key) or st.button(f"🎬 {title} 영상 불러오기", key=f"yt_load_{title}", use_container_width=True):
+        st.session_state[_ep_yt_key] = True
+        render_youtube_section(f"{title} {default_query.split()[0]} 분석 동향", sort=youtube_sort)
 
     # ── 외부 참고 링크 ────────────────────────────────────────────────────
     if external_links:
