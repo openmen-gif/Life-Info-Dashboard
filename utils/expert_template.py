@@ -434,7 +434,7 @@ def render_expert_page(
             _yt_tl = "d" if youtube_sort == "latest" else None
             youtube_results = fetch_youtube_search(query, limit=12, timelimit=_yt_tl)
 
-            from utils.data_fetcher import fetch_stock_data as _fsd
+            from utils.data_fetcher import build_trend_for_query as _btq
 
             # Determine best ticker for real trend data
             _proxy_map = {
@@ -455,22 +455,8 @@ def render_expert_page(
                 if not target_sym:
                     target_sym = "069500.KS"  # Default: KOSPI
 
-            td = _fsd(target_sym, period="7d")
-            if td.get("ok") and td.get("history"):
-                hist = td["history"][-7:]
-                dates = [r.get("Date", "") for r in hist]
-                values = [r["Close"] for r in hist]
-            else:
-                # Fallback: use 5d data
-                td2 = _fsd("069500.KS", period="5d")
-                if td2.get("ok") and td2.get("history"):
-                    hist = td2["history"]
-                    dates = [r.get("Date", "") for r in hist]
-                    values = [r["Close"] for r in hist]
-                else:
-                    dates = pd.date_range(end=datetime.datetime.today(), periods=7).strftime('%m-%d').tolist()
-                    values = [0] * len(dates)
-
+            # 검색어 기간 의도(예: '1년 추세')에 맞춰 표본 시계열 생성
+            dates, values, _trend_period = _btq(query, symbol=target_sym)
             df = pd.DataFrame({"Date": dates, "Trend": values})
 
             st.session_state[state_key] = {

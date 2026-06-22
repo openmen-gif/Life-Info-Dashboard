@@ -4,7 +4,7 @@ import streamlit as st
 import pandas as pd
 import datetime
 from utils.css_loader import apply_custom_css
-from utils.data_fetcher import fetch_stock_data, fetch_kr_index, fetch_news_search, fetch_web_search, fetch_youtube_search
+from utils.data_fetcher import fetch_stock_data, fetch_kr_index, fetch_news_search, fetch_web_search, fetch_youtube_search, build_trend_for_query
 from utils.report_downloader import render_download_buttons
 
 apply_custom_css()
@@ -365,19 +365,8 @@ with tab_expert:
             news_results = fetch_news_search(query, limit=5, timelimit="w")
             youtube_results = fetch_youtube_search(query, limit=12, timelimit="w")
 
-            dates = pd.date_range(end=datetime.datetime.today(), periods=7).strftime('%m-%d').tolist()
-
-            # 실시간 KOSPI 데이터 기반 트렌드
-            kospi = fetch_stock_data("069500.KS", period="5d")
-            if kospi.get("ok") and kospi.get("history"):
-                values = [r["Close"] for r in kospi["history"][-7:]]
-                # 날짜 수 맞추기
-                while len(values) < 7:
-                    values.insert(0, values[0] if values else 2500)
-                values = values[:7]
-            else:
-                values = [6020, 6080, 5010, 4950, 5100, 5150, 5200]
-
+            # 검색어 기간 의도(예: '1년 추세')에 맞춰 KOSPI 기반 트렌드 시계열 생성
+            dates, values, _trend_period = build_trend_for_query(query, symbol="069500.KS")
             df = pd.DataFrame({"Date": dates, "Trend": values})
 
             st.session_state[state_key] = {

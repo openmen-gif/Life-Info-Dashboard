@@ -1165,6 +1165,65 @@ def fetch_stock_data(symbol: str, period: str = "5d") -> dict:
     return {"symbol": symbol, "ok": False}
 
 
+def period_points_for_query(query: str):
+    """검색어의 기간 의도 → (yfinance period, 표본 점 수, 장기라벨 여부).
+    예) '1년 추세'→('1y',12,True), '3개월'→('3mo',10,False), 기본→('1mo',8,False)."""
+    import re as _re
+    q = query or ""
+    m = _re.search(r"(\d+)\s*(년|개월|분기|주|일)", q)
+    if m:
+        num, unit = int(m.group(1)), m.group(2)
+        if unit == "년":
+            return ("1y", 12, True)
+        if unit == "개월":
+            if num >= 6:
+                return ("6mo", 12, True)
+            if num >= 3:
+                return ("3mo", 10, False)
+            return ("1mo", 10, False)
+        if unit == "분기":
+            return ("3mo", 10, False)
+        if unit in ("주", "일"):
+            return ("5d", 7, False)
+    if any(k in q for k in ("연간", "장기", "1년", "올해", "연중")):
+        return ("1y", 12, True)
+    if "반기" in q or "6개월" in q:
+        return ("6mo", 12, True)
+    if "분기" in q:
+        return ("3mo", 10, False)
+    if "월간" in q:
+        return ("1mo", 10, False)
+    if "주간" in q:
+        return ("5d", 7, False)
+    return ("1mo", 8, False)  # 기본: 최근 1개월(7일보다 정보량↑)
+
+
+def build_trend_for_query(query: str, symbol: str = "069500.KS"):
+    """검색어 기간 의도에 맞춰 실데이터 트렌드 시계열 생성 → (dates, values, period_label).
+    장기(1y·6mo)는 'YY-MM', 단기는 'MM-DD' 라벨. 데이터 표본을 n개로 균등 샘플링."""
+    import pandas as _pd
+    period, n, long_fmt = period_points_for_query(query)
+    d = fetch_stock_data(symbol, period=period)
+    hist = (d.get("history") or []) if isinstance(d, dict) else []
+    pairs = [(h.get("Date", ""), h.get("Close")) for h in hist if h.get("Close") is not None]
+    if not pairs:
+        dates = _pd.date_range(end=datetime.datetime.today(), periods=n).strftime("%m-%d").tolist()
+        return dates, [0] * n, period
+    if len(pairs) > n:
+        idx = sorted(set(round(i * (len(pairs) - 1) / (n - 1)) for i in range(n)))
+        pairs = [pairs[i] for i in idx]
+    dates, values = [], []
+    for dt_str, close in pairs:
+        if long_fmt and len(dt_str) >= 7:
+            dates.append(dt_str[2:7])   # YY-MM
+        elif len(dt_str) >= 10:
+            dates.append(dt_str[5:10])  # MM-DD
+        else:
+            dates.append(dt_str)
+        values.append(close)
+    return dates, values, period
+
+
 # ── YouTube 검색: YouTube 페이지 파싱 → RSS → DDG (3단계) ─────────────────
 import json as _json
 

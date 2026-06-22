@@ -959,6 +959,86 @@ def _rank_relevant_items(query: str, news: list, web: list, top: int = 6):
     return relevant, terms, n_matched, scope
 
 
+def _quick_sentiment(news) -> str:
+    """뉴스 제목 기반 빠른 감성 판정(긍정/부정/중립)."""
+    if not news:
+        return "중립"
+    pos_words = ["상승", "호조", "성장", "확대", "개선", "증가", "강세", "반등", "돌파", "긍정", "회복", "흑자", "수혜"]
+    neg_words = ["하락", "감소", "위기", "약세", "우려", "축소", "급락", "둔화", "침체", "적자", "붕괴", "폭락", "리스크"]
+    pc = nc = 0
+    for n in news:
+        t = n.get("title", "")
+        pc += sum(1 for w in pos_words if w in t)
+        nc += sum(1 for w in neg_words if w in t)
+    if pc > nc * 1.2:
+        return "긍정"
+    if nc > pc * 1.2:
+        return "부정"
+    return "중립"
+
+
+def _topic_synthesis_paras(query, news, web, relevant, terms, figs, scope, n_matched, domain, stats) -> list:
+    """검색 주제에 대한 상세 내용을 수집자료로 합성 — 개요·논점·논조·수치·기간·평가 다단락.
+    LLM 없이 수집된 뉴스/웹/수치/통계를 재구성한 근거 기반 서술(원문 검증 권장)."""
+    dd = _domain_dd(domain)
+    framework = domain.get("framework", "데이터 기반 분석") if isinstance(domain, dict) else "데이터 기반 분석"
+    n_news = len(news or [])
+    n_web = len(web or [])
+    themes = _extract_news_themes(news) if news else []
+    lens = dd.get("lens", [])
+    risks = dd.get("risks", [])
+    paras = []
+
+    # 1) 개요 + 핵심 논점
+    p1 = f"수집된 뉴스 {n_news}건·웹 {n_web}건(주제 직접 매칭 {n_matched}건)을 '{query}' 관점에서 종합했습니다."
+    if themes:
+        p1 += f" 자료에서 반복적으로 등장한 핵심 논점은 【{'、'.join(themes[:6])}】 중심입니다."
+    paras.append(p1)
+
+    # 2) 논조/감성 흐름 (뉴스 흐름 요약 재사용)
+    flow = _news_flow_summary(news, query) if news else ""
+    if flow:
+        paras.append(flow)
+
+    # 3) 핵심 수치 연계
+    if figs:
+        l0 = lens[0][0] if lens else "핵심 지표"
+        l1 = lens[1][0] if len(lens) > 1 else l0
+        paras.append(
+            f"자료에서 확인된 핵심 수치는 {' · '.join(figs[:6])}입니다. "
+            f"이는 {framework} 관점에서 '{l0}'·'{l1}' 판단의 정량 근거이며, "
+            f"단일 수치가 아닌 추세·맥락으로 해석해야 합니다."
+        )
+
+    # 4) 기간(scope) 기반 추세 해석
+    if scope:
+        if stats:
+            paras.append(
+                f"질문하신 '{scope}' 기간 관점에서, 수집 트렌드는 {stats['trend_dir']}"
+                f"({stats['pct_change']:+.1f}%)·변동성 {stats['volatility']}(CV {stats['cv']:.1f}%)로 나타났습니다. "
+                f"기간 전반의 최고·최저 시점과 변동 요인을 시계열로 연결해 방향성을 판단해야 합니다."
+            )
+        else:
+            paras.append(
+                f"질문하신 '{scope}' 기간 분석에는 해당 기간의 시계열 데이터가 필요합니다. "
+                f"현재 트렌드 표본이 부족하므로 차트 기간을 '{scope}'에 맞춰 확장해 재분석하면 정확도가 높아집니다."
+            )
+
+    # 5) 주제 평가 (종합)
+    sent = _quick_sentiment(news)
+    sent_label = {"긍정": "긍정적 신호가 우세", "부정": "부정적·경계 신호가 우세", "중립": "방향성이 혼재"}.get(sent, "방향성이 혼재")
+    p5 = f"이상을 종합하면, '{query}'에 대해 현재 공개 자료는 {sent_label}합니다. "
+    if lens:
+        watch = ", ".join(t for t, _ in lens[:3])
+        p5 += f"추가로 {watch} 지표를 점검하고, "
+    if risks:
+        r1 = risks[1] if len(risks) > 1 else risks[0]
+        p5 += f"특히 {risks[0]}·{r1}에 유의해 시나리오별로 대응할 것을 권고합니다."
+    paras.append(p5)
+
+    return paras
+
+
 def _add_query_focus_section_word(doc, query, news, web, Pt, RGBColor, domain=None, stats=None):
     """[Word] 검색 주제 맞춤 상세 코너 — 질문 의도에 맞춰 관련 자료를 선별·종합 + 분야 전문 심층 분석."""
     relevant, terms, n_matched, scope = _rank_relevant_items(query, news, web)
@@ -973,6 +1053,17 @@ def _add_query_focus_section_word(doc, query, news, web, Pt, RGBColor, domain=No
         doc.add_paragraph(
             f"▶ 질문하신 기간 의도: '최근 {scope}' — 아래 자료의 시점·수치를 해당 기간 관점에서 종합 해석합니다."
         )
+
+    figs = _extract_figures_from_items(relevant, limit=8)
+
+    # ▶ 주제 핵심 논점 종합 (검색 주제 상세 내용 — 수집자료 합성)
+    p = doc.add_paragraph()
+    r = p.add_run("▶ 주제 핵심 논점 종합")
+    r.bold = True
+    r.font.size = Pt(11)
+    for para in _topic_synthesis_paras(query, news, web, relevant, terms, figs, scope, n_matched, domain, stats):
+        pp = doc.add_paragraph(para)
+        pp.paragraph_format.space_after = Pt(4)
 
     # 주제 관련 핵심 자료
     p = doc.add_paragraph()
@@ -1003,8 +1094,7 @@ def _add_query_focus_section_word(doc, query, news, web, Pt, RGBColor, domain=No
             "주제 맞춤 분석 정확도가 높아집니다."
         )
 
-    # 추출 수치
-    figs = _extract_figures_from_items(relevant, limit=8)
+    # 추출 수치 (위에서 계산한 figs 재사용)
     if figs:
         p = doc.add_paragraph()
         r = p.add_run("▶ 자료에서 추출한 핵심 수치·사실")
@@ -2880,23 +2970,31 @@ def _gen_text(query, news, web, trend, now_str, table_data=None, youtube=None) -
         if scope:
             lines.append(f"  기간 의도: 최근 {scope} 관점")
         lines.append(f"  직접 매칭 자료: {n_matched}건")
-        if relevant:
-            lines.append("  주제 관련 핵심 자료(관련도 순):")
-            for it in relevant:
-                lines.append(f"    - [{it['_kind']}] {_clean_text(it.get('title', ''))[:120]}")
-                if it.get("link"):
-                    lines.append(f"      링크: {it.get('link')}")
         figs = _extract_figures_from_items(relevant, limit=8)
-        if figs:
-            lines.append("  추출 수치·사실: " + " · ".join(figs))
-            lines.append("  ※ 자동 추출 참고값 — 원문 링크로 검증 요망")
-        # 분야 전문 심층 분석 (검색 종류 맞춤)
         _dd_stats = None
         if trend:
             _vals = [r.get("Trend", 0) for r in trend]
             if len(_vals) >= 2:
                 _dd_stats = _calc_statistics(_vals)
-        lines.extend(_domain_deepdive_text_lines(_match_expert_domain(query), query, _dd_stats, figs, terms))
+        _tdomain = _match_expert_domain(query)
+        # 주제 핵심 논점 종합 (검색 주제 상세 내용)
+        lines.append("  [ 주제 핵심 논점 종합 ]")
+        for para in _topic_synthesis_paras(query, news, web, relevant, terms, figs, scope, n_matched, _tdomain, _dd_stats):
+            lines.append(f"    {para}")
+        if relevant:
+            lines.append("  주제 관련 핵심 자료(관련도 순):")
+            for it in relevant:
+                lines.append(f"    - [{it['_kind']}] {_clean_text(it.get('title', ''))[:120]}")
+                snip = _clean_text(it.get("snippet", "") or "")[:160]
+                if snip:
+                    lines.append(f"      요지: {snip}")
+                if it.get("link"):
+                    lines.append(f"      링크: {it.get('link')}")
+        if figs:
+            lines.append("  추출 수치·사실: " + " · ".join(figs))
+            lines.append("  ※ 자동 추출 참고값 — 원문 링크로 검증 요망")
+        # 분야 전문 심층 분석 (검색 종류 맞춤)
+        lines.extend(_domain_deepdive_text_lines(_tdomain, query, _dd_stats, figs, terms))
         lines.append("")
 
     if trend:
