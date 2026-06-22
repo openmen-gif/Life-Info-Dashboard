@@ -3391,6 +3391,16 @@ def download_report_from_api(report_format: str, context: dict = None):
         return None
 
 
+def _safe_filename_part(text, maxlen=24):
+    """파일명에 안전한 부분 문자열 — 금지문자 제거, 공백→_, 길이 제한."""
+    import re
+    s = re.sub(r'[\\/:*?"<>|\r\n\t]+', " ", str(text or ""))
+    s = re.sub(r"\s+", "_", s.strip()).strip("_")
+    if len(s) > maxlen:
+        s = s[:maxlen].rstrip("_")
+    return s or "분석"
+
+
 def render_download_buttons(context: dict = None):
     """Render report download section. Works in both API and standalone mode.
 
@@ -3419,7 +3429,17 @@ def render_download_buttons(context: dict = None):
             ctx_hash = "default"
 
     now_str = datetime.datetime.now().strftime('%Y%m%d_%H%M')
-    prefix = "Master_Report" if isinstance(context, list) else ("Expert_Report" if context else "LifeInfo_Summary")
+    # 파일명을 분야·검색어로 구분 (예: 전문가분석_주식_코스피코스닥_20260623_1830.docx)
+    if isinstance(context, list):
+        prefix = f"마스터리포트_{len(context)}분야"
+    elif isinstance(context, dict):
+        _q = context.get("query", "") or "생활정보"
+        _domkey = _match_expert_domain(_q).get("_key", "")
+        _domkey = "" if _domkey in ("", "default") else _domkey
+        _slug = _safe_filename_part(_q, maxlen=22)
+        prefix = "_".join(p for p in ("전문가분석", _domkey, _slug) if p)
+    else:
+        prefix = "생활정보요약"
 
     formats = [
         ("Word (.docx)", "word", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "📝", ".docx"),
