@@ -147,25 +147,57 @@ EXPERT_ANALYSIS = {
 }
 
 
+# 분야 식별 키워드(별칭) — 검색어에 분야명("주식"·"법률")이 없어도 정확히 매칭.
+# 검색 종류에 맞는 전문 분석을 보장하는 핵심. 모두 소문자(combined가 lower 처리됨).
+DOMAIN_ALIASES = {
+    "주식": ["주식", "코스피", "코스닥", "증시", "종목", "주가", "나스닥", "다우", "s&p", "sp500",
+            "per", "pbr", "roe", "etf", "상장", "배당", "매수", "매도", "반도체", "2차전지", "시황"],
+    "환율": ["환율", "원달러", "원/달러", "달러인덱스", "dxy", "외환", "엔화", "위안", "금리차"],
+    "관세": ["관세", "무역", "수출", "수입", "무역수지", "fta", "통상", "hs코드", "보호무역"],
+    "금융": ["금융", "금리", "기준금리", "대출", "예금", "적금", "펀드", "보험", "카드", "가계부채",
+            "자산관리", "통화정책", "재테크"],
+    "건강": ["건강", "질병", "운동", "영양", "다이어트", "의료", "병원", "질환", "면역", "수면",
+            "스트레스", "bmi", "헬스"],
+    "부동산": ["부동산", "아파트", "전세", "매매", "청약", "분양", "주택", "임대", "ltv", "dsr",
+             "재건축", "집값", "월세"],
+    "법률": ["법률", "판례", "소송", "계약", "임대차", "보증금", "상속", "이혼", "손해배상", "형사",
+            "민사", "고소", "고발", "소멸시효", "법령", "변호사"],
+    "교육": ["교육", "학습", "입시", "수능", "학원", "강의", "자격증", "유학", "에듀", "공부", "시험"],
+    "여행": ["여행", "항공", "숙박", "호텔", "관광", "비자", "여권", "패키지", "항공권", "해외여행"],
+    "식생활": ["식생활", "외식", "식품", "음식", "맛집", "식재료", "배달", "레시피", "식단", "요리"],
+    "쇼핑": ["쇼핑", "소비", "할인", "구매", "이커머스", "온라인쇼핑", "직구", "세일", "소비자심리"],
+    "육아": ["육아", "출산", "보육", "어린이집", "유치원", "아동", "출산율", "양육", "분유", "기저귀"],
+    "문화": ["문화", "공연", "전시", "영화", "콘서트", "뮤지컬", "한류", "예술", "박물관", "ott"],
+    "반려동물": ["반려동물", "반려견", "반려묘", "강아지", "고양이", "사료", "동물병원", "펫"],
+    "화훼": ["화훼", "플랜테리어", "화분", "원예", "가드닝", "절화"],
+    "유가": ["유가", "wti", "brent", "브렌트", "두바이유", "원유", "휘발유", "경유", "opec", "정유"],
+    "운송": ["운송", "물류", "해운", "운임", "bdi", "컨테이너", "화물", "항만", "택배", "scfi"],
+    "분쟁": ["분쟁", "전쟁", "지정학", "군사", "난민", "제재", "무력", "안보", "우크라", "중동", "휴전"],
+    "사업": ["사업", "창업", "스타트업", "벤처", "비즈니스", "폐업", "vc", "투자유치", "법인"],
+}
+
+
 def _match_expert_domain(query: str, expert_name: str = "") -> dict:
-    """Match query/expert_name to the best expert domain analysis profile."""
+    """Match query/expert_name to the best expert domain analysis profile.
+    분야명 직접 포함 + 분야 키워드(별칭) 가중 매칭 — 검색 종류에 맞는 전문 분석 보장."""
     combined = f"{expert_name} {query}".lower()
     best_match = None
+    best_key = None
     best_score = 0
     for key, profile in EXPERT_ANALYSIS.items():
         key_lower = key.lower()
         score = 0
         if key_lower in combined:
-            score = len(key_lower) * 2
-        # partial keyword match
-        for char in key_lower:
-            if char in combined:
-                score += 1
+            score += len(key_lower) * 3
+        for alias in DOMAIN_ALIASES.get(key, ()):
+            if alias and alias in combined:
+                score += len(alias) * 3 + 2
         if score > best_score:
             best_score = score
             best_match = profile
+            best_key = key
     if best_match and best_score >= 2:
-        return best_match
+        return {**best_match, "_key": best_key}
     # Default
     return {
         "icon": "📊",
@@ -173,7 +205,535 @@ def _match_expert_domain(query: str, expert_name: str = "") -> dict:
         "metrics": ["관심도지수", "뉴스빈도", "검색트렌드"],
         "disclaimer": "",
         "analysis_fn": "_analyze_default",
+        "_key": "default",
     }
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 분야별 전문 심층 분석 지식 (Domain Deep-Dive)
+# 근거: 02_생활정보/00_Skill_MD/life-*.md(주식·금융·건강·부동산·법률·교육·여행·식생활)
+#       + 각 분야 정통 분석 프레임워크. 죽어있던 analysis_fn(_analyze_*)을 실제 구현으로 대체.
+# 각 분야: lens(전문가 관점) · indicators(핵심지표 해석) · risks · strategy · checklist
+# ═══════════════════════════════════════════════════════════════════════════════
+
+DOMAIN_DEEPDIVE = {
+    "주식": {
+        "lens": [
+            ("밸류에이션", "PER·PBR을 업종 평균·과거 밴드와 비교 — PBR 1배 미만은 순자산 이하 거래, 고PER은 성장 선반영"),
+            ("실적 모멘텀", "최근 8분기 매출·영업이익 추이와 YoY/QoQ 성장률, 컨센서스 대비 어닝 서프라이즈/미스"),
+            ("수급 동향", "외국인·기관 순매수/순매도, 거래대금, 프로그램 매매 방향"),
+            ("기술적 위치", "5/20/60/120일 이동평균 배열, RSI(과매수 70/과매도 30), MACD 교차, 지지·저항"),
+            ("거시 연동", "기준금리·원/달러 환율·미 국채 10년물·반도체 사이클과의 연동성"),
+        ],
+        "indicators": [
+            ("PER", "업종 평균 대비 낮으면 저평가, 높으면 성장 기대 선반영"),
+            ("PBR", "1배 미만은 청산가치 이하 — 자산주 저평가 신호"),
+            ("ROE", "15% 이상이면 자본 효율 우량"),
+            ("RSI(14)", "70 이상 과매수 경계 / 30 이하 과매도 반등 가능"),
+            ("베타(β)", "1 초과는 시장보다 변동 큼(공격적) / 1 미만 방어적"),
+        ],
+        "risks": ["시장 리스크(금리·환율)", "업종 리스크(반도체·2차전지 사이클)", "개별 리스크(실적쇼크·공시)", "수급 리스크(외국인 이탈)"],
+        "strategy": ["가치투자: 저PER/PBR 저평가주 장기 보유", "성장투자: 고성장 매출·이익 종목 선별", "모멘텀: 강한 상승 추세 편승(단기)", "배당투자: 안정적 배당수익(장기·보수)"],
+        "checklist": ["관심 종목 PER/PBR을 업종 평균과 비교했는가", "최근 분기 실적·가이던스를 확인했는가", "외국인·기관 수급 방향을 점검했는가", "진입·목표·손절 가격 시나리오를 설정했는가"],
+        "source": "life-stock-analyst.md",
+    },
+    "환율": {
+        "lens": [
+            ("금리차·캐리", "내외 금리차 확대 시 자본이동·캐리 트레이드 방향 변화"),
+            ("달러인덱스(DXY)", "달러 강세 국면에서는 신흥국·원화 동반 약세 경향"),
+            ("대외건전성", "경상수지·외환보유고·자본수지로 통화 방어력 판단"),
+            ("당국 개입·변동성", "급변동 구간의 스무딩 오퍼레이션·구두개입 경계"),
+            ("글로벌 이벤트", "FOMC·지정학 리스크·위험선호(Risk-on/off) 전이"),
+        ],
+        "indicators": [
+            ("원/달러", "상승=원화 약세 → 수출주 수혜·수입물가 상승"),
+            ("DXY", "상승=달러 강세 → 신흥국 통화 약세 압력"),
+            ("내외 금리차", "미국>한국 확대 시 자본유출·원화 약세 압력"),
+            ("변동성", "일중 변동 확대 시 단기 투기·당국 개입 가능성"),
+        ],
+        "risks": ["미 통화정책 전환", "지정학 리스크", "경상수지 악화", "급격한 자본유출"],
+        "strategy": ["분할 환전·환헤지로 변동성 분산", "수출입 네고 타이밍 최적화", "달러·통화 분산 보유"],
+        "checklist": ["내외 금리차 방향을 확인했는가", "DXY 추세를 확인했는가", "경상수지·외환보유고를 점검했는가", "환헤지 필요 여부를 결정했는가"],
+        "source": "",
+    },
+    "관세": {
+        "lens": [
+            ("무역수지", "수출−수입 균형과 품목별 기여도"),
+            ("관세율·FTA", "HS코드별 관세율과 FTA 원산지 활용 여부"),
+            ("수출경쟁력", "환율·단가·품질 기반 품목 경쟁력"),
+            ("통상 환경", "보호무역·통상분쟁·비관세장벽 동향"),
+        ],
+        "indicators": [
+            ("수출증감률", "주력 품목·지역별 증감으로 모멘텀 판단"),
+            ("수입증감률", "원자재·중간재 수입은 향후 생산 선행지표"),
+            ("무역수지", "흑/적자 추세로 대외건전성 평가"),
+            ("관세율", "HS코드·협정세율 적용 여부로 비용 산정"),
+        ],
+        "risks": ["통상마찰·보복관세", "보호무역 강화", "글로벌 공급망 재편", "환율 변동"],
+        "strategy": ["FTA 원산지 활용으로 관세 절감", "HS코드 분류 최적화", "수출시장 다변화"],
+        "checklist": ["HS코드·관세율을 확인했는가", "FTA 원산지 기준을 충족하는가", "환율 영향을 반영했는가", "비관세장벽을 점검했는가"],
+        "source": "",
+    },
+    "금융": {
+        "lens": [
+            ("금리 사이클", "기준금리 방향과 예대마진·대출금리 전이"),
+            ("실질금리", "명목금리−물가(CPI)로 자산 매력도 판단"),
+            ("가계·신용", "가계부채·연체율·신용 스프레드"),
+            ("자산배분", "위험성향별 주식·채권·현금·대안 비중"),
+        ],
+        "indicators": [
+            ("기준금리", "인상기=대출부담↑·예금매력↑, 인하기 반대"),
+            ("예금금리", "안전자산 수익률 — 물가 대비 실질수익 확인"),
+            ("대출금리", "고정/변동 선택 — 금리 상승기엔 고정 유리"),
+            ("CPI", "물가 상승 시 실질구매력·실질금리 하락"),
+        ],
+        "risks": ["금리 변동", "신용·연체 리스크", "인플레이션", "유동성 경색"],
+        "strategy": ["금리 상승기 변동금리 노출 축소", "분산투자·만기 분산", "비상자금 6개월분 확보"],
+        "checklist": ["금리 방향을 확인했는가", "대출 고정/변동을 비교했는가", "수수료·세금·중도해지 조건을 확인했는가", "비상자금을 확보했는가"],
+        "source": "life-finance-advisor.md",
+    },
+    "건강": {
+        "lens": [
+            ("예방·생활습관", "흡연·음주·수면 등 위험요인 관리"),
+            ("영양 균형", "탄단지·미량영양소와 일일권장섭취량 대비"),
+            ("신체활동", "유산소+근력 운동 강도·빈도"),
+            ("정신건강", "스트레스·번아웃·수면의 질"),
+            ("정기 검진", "연령·가족력 기반 검진 주기"),
+        ],
+        "indicators": [
+            ("BMI", "18.5~22.9 정상, 23+ 과체중 — 체성분 병행 해석"),
+            ("권장섭취량", "활동량·연령별 열량·영양소 기준 대비 점검"),
+            ("운동강도", "주 150분 중강도 유산소 + 주 2회 근력 권장"),
+        ],
+        "risks": ["만성질환(대사·심혈관)", "검증되지 않은 건강정보", "과로·번아웃"],
+        "strategy": ["균형 식단·규칙적 운동", "수면 7~8시간 확보", "정기검진·전문의 상담"],
+        "checklist": ["BMI가 정상범위인가", "주간 운동량을 점검했는가", "수면·스트레스를 관리하는가", "전문의 상담이 필요한가"],
+        "source": "life-health-advisor.md",
+    },
+    "부동산": {
+        "lens": [
+            ("가격지수", "매매·전세 가격지수 추이와 전세가율"),
+            ("금융·규제", "금리·LTV·DSR 등 대출규제 영향"),
+            ("수급", "입주물량·청약경쟁률·미분양"),
+            ("정책·세제", "취득·보유·양도세와 규제지역 지정"),
+            ("입지", "교통·학군·생활인프라·개발호재"),
+        ],
+        "indicators": [
+            ("매매가격지수", "상승/하락 추세와 지역 차별화"),
+            ("전세가율", "전세/매매 비율 — 높으면 갭·실수요 강함"),
+            ("청약경쟁률", "수요 강도와 분양시장 온도"),
+            ("LTV/DSR", "대출 한도·상환능력 제약"),
+        ],
+        "risks": ["금리·대출규제", "공급과잉·공실", "정책 변동", "역전세·깡통전세"],
+        "strategy": ["실거주 우선·상환능력 내 매수", "입지·학군·교통 중심", "지역·시점 분산"],
+        "checklist": ["LTV/DSR 한도를 확인했는가", "전세가율·실거래가를 점검했는가", "입주물량을 확인했는가", "취득·보유·양도세를 계산했는가"],
+        "source": "life-realestate-advisor.md",
+    },
+    "법률": {
+        "lens": [
+            ("법령·요건", "적용 법령과 권리·의무 성립 요건"),
+            ("판례 동향", "유사 사안의 법원 판단 경향"),
+            ("시효·기간", "소멸시효·제척기간·제소기간"),
+            ("입증·증거", "주장사실의 증거·서류 확보"),
+            ("절차·관할", "조정·소송 절차와 관할"),
+        ],
+        "indicators": [
+            ("관련법령", "근거 조문과 요건 충족 여부"),
+            ("판례동향", "승소·패소 경향과 쟁점"),
+            ("소멸시효", "권리행사 가능 기간(도과 시 권리 소멸)"),
+        ],
+        "risks": ["소멸시효 도과", "증거 부족", "절차·기간 미준수"],
+        "strategy": ["증거 보전·내용증명 우선", "조정·화해 등 비소송 검토", "무료 법률상담(132) 활용"],
+        "checklist": ["소멸시효를 확인했는가", "증거·서류를 확보했는가", "관할·절차를 확인했는가", "전문가 상담이 필요한가"],
+        "source": "life-legal-advisor.md",
+    },
+    "교육": {
+        "lens": [
+            ("목표·진단", "학습 목표와 현재 수준 격차 진단"),
+            ("커리큘럼", "목표 역산 로드맵과 단계별 마일스톤"),
+            ("학습효율", "인출연습·간격반복 등 메타인지 전략"),
+            ("평가·피드백", "형성평가로 약점 보완"),
+            ("에듀테크", "온라인·AI 학습도구 활용"),
+        ],
+        "indicators": [
+            ("수강률", "완주·진도율로 학습 지속성 판단"),
+            ("합격률", "목표 시험 난이도·준비 적정성"),
+            ("학습효율", "투입 시간 대비 성취도"),
+        ],
+        "risks": ["동기 저하·중도이탈", "정보 과부하", "사교육 과의존"],
+        "strategy": ["목표 역산 학습계획", "반복·인출연습 중심", "주기적 형성평가"],
+        "checklist": ["목표·기간을 명확히 했는가", "주간 학습량을 점검했는가", "약점 보완 계획이 있는가", "자료 출처를 검증했는가"],
+        "source": "life-education-advisor.md",
+    },
+    "여행": {
+        "lens": [
+            ("가격·시즌", "항공·숙박 가격과 성수기/비수기"),
+            ("환율·물가", "현지 물가·환율로 예산 산정"),
+            ("안전", "외교부 여행경보 단계·치안"),
+            ("일정 최적화", "동선·이동시간·필수코스 배분"),
+        ],
+        "indicators": [
+            ("항공운임지수", "시즌·노선별 가격 변동"),
+            ("숙박가격지수", "지역·등급별 숙박비"),
+            ("환율", "현지 통화 환율로 실질 비용 산정"),
+        ],
+        "risks": ["여행경보·치안", "환율 변동", "항공 지연·결항", "성수기 비용 급등"],
+        "strategy": ["비수기·얼리버드 예약", "환전 분산", "여행자보험 가입"],
+        "checklist": ["여행경보 단계를 확인했는가", "항공·숙박 가격을 비교했는가", "환율·예산을 점검했는가", "보험·비자를 확인했는가"],
+        "source": "life-travel-planner.md",
+    },
+    "식생활": {
+        "lens": [
+            ("물가·비용", "외식물가·식재료비 추이"),
+            ("영양 균형", "탄단지·식이섬유 균형"),
+            ("트렌드", "배달·간편식(HMR)·건강식 수요"),
+            ("식품안전", "원산지·유통기한·위생"),
+        ],
+        "indicators": [
+            ("외식물가지수", "외식비 부담 추이"),
+            ("식재료가격", "주요 식재료 시세 변동"),
+            ("배달주문트렌드", "채널·카테고리 소비 변화"),
+        ],
+        "risks": ["물가 상승", "식품안전 사고", "영양 불균형"],
+        "strategy": ["제철·국산 식재료 활용", "간편식 영양 보완", "배달 빈도 관리"],
+        "checklist": ["식재료 가격 추이를 확인했는가", "영양 균형을 점검했는가", "원산지·유통기한을 확인했는가"],
+        "source": "life-food-expert.md",
+    },
+    "쇼핑": {
+        "lens": [
+            ("소비심리·물가", "소비자심리지수와 물가 영향"),
+            ("채널", "온라인/오프라인·라이브커머스 비중"),
+            ("프로모션", "할인·적립·카드혜택 주기"),
+            ("가성비", "단가·총비용 비교"),
+        ],
+        "indicators": [
+            ("소비자심리지수", "100 기준 — 이상 낙관, 이하 위축"),
+            ("온라인거래액", "이커머스 성장·카테고리 트렌드"),
+            ("카드소비", "실질 소비 흐름"),
+        ],
+        "risks": ["충동구매·과소비", "가격 변동", "반품·AS 분쟁"],
+        "strategy": ["할인 주기 활용", "최저가·단가 비교", "필요 기반 구매"],
+        "checklist": ["최저가를 비교했는가", "할인·적립을 확인했는가", "필요성을 점검했는가", "반품·AS 조건을 확인했는가"],
+        "source": "",
+    },
+    "육아": {
+        "lens": [
+            ("정책·지원", "보육·돌봄 정책과 수당·바우처"),
+            ("발달 단계", "연령별 신체·인지·정서 발달"),
+            ("비용", "육아용품·교육·돌봄 비용"),
+            ("안전·건강", "예방접종·안전사고 예방"),
+        ],
+        "indicators": [
+            ("합계출산율", "인구·정책 환경 지표"),
+            ("보육시설현황", "어린이집·유치원 공급"),
+            ("육아용품시장", "용품·서비스 가격 동향"),
+        ],
+        "risks": ["비용 부담", "정보 과부하", "안전사고"],
+        "strategy": ["정부 지원제도 활용", "발달 단계 맞춤 양육", "안전 우선"],
+        "checklist": ["지원제도(수당·바우처)를 확인했는가", "발달 단계를 점검했는가", "용품 안전인증을 확인했는가"],
+        "source": "",
+    },
+    "문화": {
+        "lens": [
+            ("트렌드", "공연·전시·OTT 콘텐츠 동향"),
+            ("한류", "K-콘텐츠 수출·글로벌 수요"),
+            ("관람 패턴", "장르·연령별 소비"),
+            ("비용·접근성", "티켓·예매·지역 인프라"),
+        ],
+        "indicators": [
+            ("공연관람률", "장르별 수요 강도"),
+            ("전시참관객", "전시·박람회 흥행"),
+            ("한류수출", "콘텐츠 산업 성장"),
+        ],
+        "risks": ["콘텐츠 편중", "비용 부담", "지역 접근성 격차"],
+        "strategy": ["조기예매·할인 활용", "다양한 장르 경험"],
+        "checklist": ["공연·전시 일정을 확인했는가", "할인·예매를 확인했는가", "접근성을 점검했는가"],
+        "source": "",
+    },
+    "반려동물": {
+        "lens": [
+            ("보건·등록", "동물등록·예방접종·건강관리"),
+            ("시장·비용", "사료·용품·의료비"),
+            ("행동·훈련", "문제행동 예방과 사회화"),
+            ("서비스", "펫보험·돌봄·장묘"),
+        ],
+        "indicators": [
+            ("반려동물등록수", "양육 인구·시장 규모"),
+            ("펫시장규모", "산업 성장·카테고리"),
+            ("사료가격", "양육 비용 동향"),
+        ],
+        "risks": ["의료비 부담", "유기·분실", "안전사고"],
+        "strategy": ["펫보험 가입", "정기 건강검진", "등록·예방접종 준수"],
+        "checklist": ["등록·접종을 확인했는가", "사료·영양을 점검했는가", "보험·의료비를 대비했는가"],
+        "source": "",
+    },
+    "화훼": {
+        "lens": [
+            ("시장·가격", "화훼 도소매 시세·유통"),
+            ("트렌드", "플랜테리어·반려식물 수요"),
+            ("계절·이벤트", "졸업·기념일 등 수요 집중"),
+            ("관리·재배", "광·온도·관수 등 관리 난이도"),
+        ],
+        "indicators": [
+            ("화훼시장규모", "산업 규모·소비 추이"),
+            ("플랜테리어 관심도", "홈가드닝 수요 변화"),
+        ],
+        "risks": ["계절 수요 편중", "관리 난이도", "유통·신선도"],
+        "strategy": ["제철 화훼 활용", "관리 쉬운 식물 선택", "이벤트 수요 대응"],
+        "checklist": ["제철·시세를 확인했는가", "관리 난이도를 점검했는가", "용도(선물/홈)를 구분했는가"],
+        "source": "",
+    },
+    "유가": {
+        "lens": [
+            ("유종 스프레드", "WTI·Brent·Dubai 가격차와 정제마진"),
+            ("공급", "OPEC+ 감산·증산과 미국 셰일 생산"),
+            ("수요·재고", "경기·계절 수요와 원유 재고"),
+            ("지정학·환율", "중동 리스크와 원/달러 전이"),
+        ],
+        "indicators": [
+            ("WTI", "미국 서부텍사스유 — 글로벌 벤치마크"),
+            ("Brent", "북해유 — 국제 유가 기준"),
+            ("Dubai", "중동유 — 국내 도입 비중 높음"),
+            ("국내유가", "국제유가 2~3주 시차 전이"),
+        ],
+        "risks": ["OPEC+ 정책", "지정학 충격", "수요 둔화", "환율 전이"],
+        "strategy": ["상승기 비용 헤지", "비용 전가·효율화 검토"],
+        "checklist": ["WTI/Brent 추세를 확인했는가", "OPEC+ 일정을 점검했는가", "재고지표를 확인했는가", "환율 전이를 반영했는가"],
+        "source": "",
+    },
+    "운송": {
+        "lens": [
+            ("운임 지수", "BDI(건화물)·SCFI(컨테이너) 운임"),
+            ("유가 연동", "벙커유·유가가 운임 원가에 전이"),
+            ("물동량", "교역량·항만 처리량"),
+            ("공급망", "선복·항만 적체·공급망 차질"),
+        ],
+        "indicators": [
+            ("BDI", "건화물 운임 — 글로벌 교역 선행지표"),
+            ("컨테이너운임", "공급망·소비재 물류 비용"),
+            ("항공화물량", "고부가·긴급 화물 수요"),
+        ],
+        "risks": ["운임 변동", "유가 상승", "공급망 차질", "항만 적체"],
+        "strategy": ["장·단기 운임계약 분산", "유가 헤지", "공급망 다변화"],
+        "checklist": ["BDI/SCFI 추세를 확인했는가", "유가 영향을 점검했는가", "공급망 리스크를 점검했는가"],
+        "source": "",
+    },
+    "분쟁": {
+        "lens": [
+            ("지정학 리스크", "분쟁 강도·확전 가능성"),
+            ("자원 충격", "에너지·곡물 등 원자재 공급 영향"),
+            ("안보·동맹", "동맹·제재·외교 동향"),
+            ("시장 파급", "안전자산 선호·변동성 전이"),
+        ],
+        "indicators": [
+            ("지정학리스크지수", "리스크 고조/완화 추세"),
+            ("분쟁영향권국가", "공급망·교역 노출도"),
+            ("난민현황", "인도적·사회적 파급"),
+        ],
+        "risks": ["에너지·원자재 충격", "공급망 차질", "안전·여행 위험", "시장 변동성"],
+        "strategy": ["안전자산 비중 조정", "공급망 다변화", "여행·교역 리스크 관리"],
+        "checklist": ["분쟁 지역·영향권을 확인했는가", "에너지/곡물 가격 영향을 점검했는가", "안전·여행경보를 확인했는가"],
+        "source": "",
+    },
+    "사업": {
+        "lens": [
+            ("창업 동향", "창업·폐업 추이와 업종 트렌드"),
+            ("자금조달", "VC·대출·정부지원 환경"),
+            ("시장·경쟁", "수요·경쟁강도·진입장벽"),
+            ("규제·정책", "인허가·규제·세제"),
+            ("수익성", "비즈니스모델·손익분기·현금흐름"),
+        ],
+        "indicators": [
+            ("창업건수", "창업 활력·업종 쏠림"),
+            ("폐업률", "시장 경쟁·생존율"),
+            ("VC투자규모", "자금조달 환경·투심"),
+        ],
+        "risks": ["자금경색", "경쟁 심화", "규제 변동", "수요 변동"],
+        "strategy": ["린(Lean) 시장 검증", "정부지원·R&D 활용", "현금흐름 중심 운영"],
+        "checklist": ["시장·경쟁을 분석했는가", "자금조달 계획이 있는가", "규제·인허가를 확인했는가", "손익분기를 점검했는가"],
+        "source": "",
+    },
+    "default": {
+        "lens": [
+            ("데이터 신뢰도", "출처·기준일·표본의 대표성 검증"),
+            ("시계열 추세", "방향성·기울기와 추세 지속성"),
+            ("변동성·이상치", "표준편차·CV와 급변 구간 식별"),
+            ("뉴스 감성", "긍정/부정 논조와 키워드 흐름"),
+            ("선행지표", "상관·선행 관계로 방향 예측"),
+        ],
+        "indicators": [
+            ("관심도지수", "검색·언급 빈도로 수요 강도 판단"),
+            ("뉴스빈도", "이슈화 정도와 모멘텀"),
+            ("검색트렌드", "대중 관심의 선행 신호"),
+        ],
+        "risks": ["데이터 편향", "단기 노이즈", "외부 충격"],
+        "strategy": ["다출처 교차검증", "추세·변동성 병행 분석", "정기 모니터링"],
+        "checklist": ["출처·기준일을 확인했는가", "추세 방향을 점검했는가", "이상치 원인을 분석했는가", "추가 데이터를 확보했는가"],
+        "source": "life-data-analyst.md",
+    },
+}
+
+
+def _domain_dd(domain) -> dict:
+    """매칭된 도메인 프로필에서 심층 분석 지식 묶음을 반환."""
+    key = domain.get("_key", "default") if isinstance(domain, dict) else "default"
+    return DOMAIN_DEEPDIVE.get(key) or DOMAIN_DEEPDIVE["default"]
+
+
+def _domain_narrative(domain, query, terms, figs, stats) -> str:
+    """검색어·추출수치·통계를 분야 관점에 연결한 맞춤 심층 해석 서술."""
+    dd = _domain_dd(domain)
+    framework = domain.get("framework", "데이터 기반 분석") if isinstance(domain, dict) else "데이터 기반 분석"
+    term_str = ", ".join(terms[:5]) if terms else (query or "검색 주제")
+    parts = [f"검색 주제 「{query}」의 핵심어({term_str})를 {framework} 관점에서 종합하면 다음과 같습니다."]
+    lens = dd.get("lens", [])
+    if lens:
+        s = f"우선 '{lens[0][0]}' 측면에서 {lens[0][1]}."
+        if len(lens) > 1:
+            s += f" 또한 '{lens[1][0]}' 측면에서 {lens[1][1]}."
+        parts.append(s)
+    if figs:
+        parts.append(
+            f"자료에서 추출된 수치({' · '.join(figs[:5])})는 위 관점의 정량 근거이며, "
+            f"단일 시점이 아닌 추세·맥락으로 해석해야 합니다."
+        )
+    if stats:
+        risk0 = dd.get("risks", ["주요 리스크"])[0]
+        parts.append(
+            f"수집 트렌드는 {stats['trend_dir']}({stats['pct_change']:+.1f}%)·변동성 {stats['volatility']}"
+            f"(CV {stats['cv']:.1f}%) 수준으로, '{risk0}' 점검이 우선됩니다."
+        )
+    return " ".join(parts)
+
+
+def _render_domain_deepdive_word(doc, domain, query, stats, figs, terms, Pt, RGBColor):
+    """[Word] 검색 종류 맞춤 분야 전문 심층 분석 블록 — lens·지표·연계해석·리스크·체크리스트."""
+    from docx.enum.table import WD_TABLE_ALIGNMENT
+    dd = _domain_dd(domain)
+    icon = domain.get("icon", "📊") if isinstance(domain, dict) else "📊"
+    framework = domain.get("framework", "데이터 기반 분석") if isinstance(domain, dict) else "데이터 기반 분석"
+
+    p = doc.add_paragraph()
+    r = p.add_run(f"▶ {icon} 분야 전문가 심층 분석 — {framework}")
+    r.bold = True
+    r.font.size = Pt(11)
+
+    # 1) 전문가 분석 관점
+    p = doc.add_paragraph()
+    r = p.add_run("· 전문가 분석 관점")
+    r.bold = True
+    r.font.size = Pt(10)
+    for title, desc in dd.get("lens", []):
+        bp = doc.add_paragraph(style="List Bullet")
+        rt = bp.add_run(f"{title} — ")
+        rt.bold = True
+        rt.font.size = Pt(9)
+        rd = bp.add_run(desc)
+        rd.font.size = Pt(9)
+
+    # 2) 핵심 지표 해석 가이드
+    inds = dd.get("indicators", [])
+    if inds:
+        p = doc.add_paragraph()
+        r = p.add_run("· 핵심 지표 해석 가이드")
+        r.bold = True
+        r.font.size = Pt(10)
+        tbl = doc.add_table(rows=1 + len(inds), cols=2, style="Light Shading Accent 1")
+        tbl.alignment = WD_TABLE_ALIGNMENT.CENTER
+        tbl.rows[0].cells[0].text = "지표"
+        tbl.rows[0].cells[1].text = "해석 기준"
+        for c in tbl.rows[0].cells:
+            for pp in c.paragraphs:
+                for rr in pp.runs:
+                    rr.bold = True
+        for i, (ind, interp) in enumerate(inds):
+            tbl.rows[i + 1].cells[0].text = ind
+            tbl.rows[i + 1].cells[1].text = interp
+
+    # 3) 검색어 연계 심층 해석
+    p = doc.add_paragraph()
+    r = p.add_run("· 검색어 연계 심층 해석")
+    r.bold = True
+    r.font.size = Pt(10)
+    doc.add_paragraph(_domain_narrative(domain, query, terms, figs, stats))
+
+    # 4) 분야별 리스크 점검
+    risks = dd.get("risks", [])
+    if risks:
+        p = doc.add_paragraph()
+        r = p.add_run("· 분야별 리스크 점검")
+        r.bold = True
+        r.font.size = Pt(10)
+        doc.add_paragraph("   " + "  ·  ".join(risks))
+
+    # 5) 실행 체크리스트
+    checklist = dd.get("checklist", [])
+    if checklist:
+        p = doc.add_paragraph()
+        r = p.add_run("· 실행 체크리스트")
+        r.bold = True
+        r.font.size = Pt(10)
+        for c in checklist:
+            doc.add_paragraph(f"   ☐ {c}")
+
+    # 근거 출처
+    src = dd.get("source")
+    if src:
+        sp = doc.add_paragraph(f"   ※ 분석 프레임워크 근거: 02_생활정보/00_Skill_MD/{src}")
+        for rn in sp.runs:
+            rn.font.size = Pt(7)
+            rn.font.color.rgb = RGBColor(0x99, 0x99, 0x99)
+
+
+def _render_domain_strategy_word(doc, domain, Pt, RGBColor):
+    """[Word] 전문가 종합 인사이트에 추가하는 분야별 전략 관점 + 모니터링 지표."""
+    dd = _domain_dd(domain)
+    strat = dd.get("strategy", [])
+    inds = dd.get("indicators", [])
+    if not strat and not inds:
+        return
+    framework = domain.get("framework", "분야") if isinstance(domain, dict) else "분야"
+    doc.add_paragraph("")
+    p = doc.add_paragraph()
+    r = p.add_run(f"▶ 분야별 전략 관점 — {framework}")
+    r.bold = True
+    r.font.size = Pt(11)
+    for s in strat:
+        doc.add_paragraph(f"   • {s}")
+    if inds:
+        names = ", ".join(ind for ind, _ in inds)
+        mp = doc.add_paragraph(f"   핵심 모니터링 지표: {names}")
+        for rn in mp.runs:
+            rn.font.size = Pt(9)
+            rn.font.color.rgb = RGBColor(0x55, 0x55, 0x55)
+
+
+def _domain_deepdive_text_lines(domain, query, stats, figs, terms) -> list:
+    """[Text] 분야 전문 심층 분석을 텍스트 라인 목록으로 반환."""
+    dd = _domain_dd(domain)
+    framework = domain.get("framework", "데이터 기반 분석") if isinstance(domain, dict) else "데이터 기반 분석"
+    lines = [f"  [ 분야 전문가 심층 분석 — {framework} ]"]
+    for title, desc in dd.get("lens", []):
+        lines.append(f"    · {title}: {desc}")
+    inds = dd.get("indicators", [])
+    if inds:
+        lines.append("    핵심 지표 해석:")
+        for ind, interp in inds:
+            lines.append(f"      - {ind}: {interp}")
+    lines.append("    연계 해석: " + _domain_narrative(domain, query, terms, figs, stats))
+    risks = dd.get("risks", [])
+    if risks:
+        lines.append("    리스크: " + " · ".join(risks))
+    strat = dd.get("strategy", [])
+    if strat:
+        lines.append("    전략: " + " / ".join(strat))
+    checklist = dd.get("checklist", [])
+    if checklist:
+        lines.append("    체크리스트: " + " / ".join(checklist))
+    src = dd.get("source")
+    if src:
+        lines.append(f"    ※ 근거: 00_Skill_MD/{src}")
+    return lines
 
 
 def _is_text_similar(text1: str, text2: str, threshold: float = 0.6) -> bool:
@@ -399,8 +959,8 @@ def _rank_relevant_items(query: str, news: list, web: list, top: int = 6):
     return relevant, terms, n_matched, scope
 
 
-def _add_query_focus_section_word(doc, query, news, web, Pt, RGBColor):
-    """[Word] 검색 주제 맞춤 상세 코너 — 질문 의도에 맞춰 관련 자료를 선별·종합."""
+def _add_query_focus_section_word(doc, query, news, web, Pt, RGBColor, domain=None, stats=None):
+    """[Word] 검색 주제 맞춤 상세 코너 — 질문 의도에 맞춰 관련 자료를 선별·종합 + 분야 전문 심층 분석."""
     relevant, terms, n_matched, scope = _rank_relevant_items(query, news, web)
 
     doc.add_paragraph(
@@ -474,6 +1034,11 @@ def _add_query_focus_section_word(doc, query, news, web, Pt, RGBColor):
     insight += "정량 통계·감성·트렌드 등 표준 분석은 이하 섹션을 참조하세요."
     doc.add_paragraph(insight)
 
+    # ── 분야 전문 심층 분석 (검색 종류 맞춤) ──
+    if domain is not None:
+        doc.add_paragraph("")
+        _render_domain_deepdive_word(doc, domain, query, stats, figs, terms, Pt, RGBColor)
+
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # Standard Word TOC field (표준 목차 — 헤딩 기반 자동 페이지번호)
@@ -515,6 +1080,98 @@ def _add_toc_field(doc, levels: str = "2-3"):
     for el in (fb, instr, fs, placeholder, fe):
         r.append(el)
     return para
+
+
+def _add_pageref_run(paragraph, bookmark, Pt, RGBColor):
+    """PAGEREF 필드 run 추가 — Word가 열릴 때 북마크의 실제 페이지번호로 갱신."""
+    from docx.oxml.ns import qn
+    from docx.oxml import OxmlElement
+    r = paragraph.add_run()._r
+    fb = OxmlElement("w:fldChar")
+    fb.set(qn("w:fldCharType"), "begin")
+    instr = OxmlElement("w:instrText")
+    instr.set(qn("xml:space"), "preserve")
+    instr.text = f' PAGEREF {bookmark} \\h '
+    fs = OxmlElement("w:fldChar")
+    fs.set(qn("w:fldCharType"), "separate")
+    t = OxmlElement("w:t")
+    t.text = "·"  # Word 갱신 전 placeholder (갱신 후 페이지번호)
+    fe = OxmlElement("w:fldChar")
+    fe.set(qn("w:fldCharType"), "end")
+    for el in (fb, instr, fs, t, fe):
+        r.append(el)
+
+
+def _add_standard_toc(doc, entries, Pt, RGBColor):
+    """표준 Word TOC 필드 + 캐시된 실제 항목(번호·제목·점선리더·PAGEREF·북마크 클릭링크).
+
+    entries: list of (label, title, bookmark). Word에서 열면 헤딩 기반으로 목차·페이지번호가
+    자동 갱신되고, 모바일/웹/LibreOffice 등 필드 미지원 뷰어에서도 캐시된 제목·링크가 보인다.
+    """
+    from docx.oxml.ns import qn
+    from docx.oxml import OxmlElement
+
+    # ── TOC 필드 시작 (begin + instrText + separate) ──
+    p = doc.add_paragraph()
+    r = p.add_run()._r
+    fb = OxmlElement("w:fldChar")
+    fb.set(qn("w:fldCharType"), "begin")
+    fb.set(qn("w:dirty"), "true")
+    instr = OxmlElement("w:instrText")
+    instr.set(qn("xml:space"), "preserve")
+    instr.text = ' TOC \\o "2-2" \\h \\z \\u '
+    fs = OxmlElement("w:fldChar")
+    fs.set(qn("w:fldCharType"), "separate")
+    for el in (fb, instr, fs):
+        r.append(el)
+
+    # ── 캐시된 목차 항목 (필드 갱신 전까지 표시) ──
+    for label, title, bm in entries:
+        ep = doc.add_paragraph()
+        pPr = ep._p.get_or_add_pPr()
+        tabs = OxmlElement("w:tabs")
+        tab = OxmlElement("w:tab")
+        tab.set(qn("w:val"), "right")
+        tab.set(qn("w:leader"), "dot")
+        tab.set(qn("w:pos"), "9072")  # ~16cm 우측 정렬 점선 리더
+        tabs.append(tab)
+        pPr.append(tabs)
+        _add_internal_link(ep, f"{label}. {title}", bm)
+        tr = OxmlElement("w:r")
+        tr.append(OxmlElement("w:tab"))
+        ep._p.append(tr)
+        _add_pageref_run(ep, bm, Pt, RGBColor)
+
+    # ── TOC 필드 종료 ──
+    endp = doc.add_paragraph()
+    er = endp.add_run()._r
+    fe = OxmlElement("w:fldChar")
+    fe.set(qn("w:fldCharType"), "end")
+    er.append(fe)
+
+
+def _plan_individual_sections(query, news, web, trend, table_data, youtube):
+    """개별 리포트의 섹션 순서·번호·북마크 플랜 — TOC와 본문 헤딩 번호를 일치시킨다.
+    조건은 _gen_word 본문의 섹션 생성 조건과 정확히 동일해야 한다."""
+    plan = [("분석 개요 (Executive Summary)", "sec_summary")]
+    if query and (news or web):
+        plan.append(("검색 주제 심층 분석", "sec_focus"))
+    if trend:
+        plan.append(("트렌드 분석 및 통계", "sec_trend"))
+    if trend and len(trend) >= 3:
+        plan.append(("변화율 분석 및 이상치 탐지", "sec_change_rate"))
+    if table_data:
+        plan.append(("데이터 현황 및 통계 분석", "sec_table_data"))
+    if news:
+        plan.append(("뉴스 심층 분석 (감성·키워드·출처)", "sec_news_analysis"))
+        plan.append(("주요 뉴스 목록", "sec_news_list"))
+    if web:
+        plan.append(("웹 검색 결과 분석", "sec_web"))
+    if youtube:
+        plan.append(("관련 YouTube 영상", "sec_youtube"))
+    plan.append(("전문가 종합 인사이트", "sec_expert"))
+    plan.append(("참고문헌 (References)", "sec_refs"))
+    return [(i + 1, t, b) for i, (t, b) in enumerate(plan)]
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -997,6 +1654,7 @@ def _gen_word(query, news, web, trend, now_str, table_data=None, youtube=None) -
         return _gen_text(query, news, web, trend, now_str, table_data=table_data, youtube=youtube)
 
     domain = _match_expert_domain(query)
+    section_plan = _plan_individual_sections(query, news, web, trend, table_data, youtube)
     doc = Document()
     _set_update_fields_on_open(doc)
 
@@ -1034,7 +1692,7 @@ def _gen_word(query, news, web, trend, now_str, table_data=None, youtube=None) -
     _tlr.bold = True
     _tlr.font.size = Pt(15)
     _tlr.font.color.rgb = RGBColor(0x1A, 0x23, 0x7E)
-    _add_toc_field(doc, levels="2-2")
+    _add_standard_toc(doc, [(str(n), t, b) for n, t, b in section_plan], Pt, RGBColor)
     doc.add_paragraph("")
 
     # ── Disclaimer ──
@@ -1120,7 +1778,7 @@ def _gen_word(query, news, web, trend, now_str, table_data=None, youtube=None) -
         h = doc.add_heading(f"{current_sec}. 검색 주제 심층 분석", level=2)
         _add_bookmark(h, "sec_focus")
         current_sec += 1
-        _add_query_focus_section_word(doc, query, news, web, Pt, RGBColor)
+        _add_query_focus_section_word(doc, query, news, web, Pt, RGBColor, domain=domain, stats=stats)
 
     # ══ 2. Trend Analysis ══
     if trend:
@@ -1719,6 +2377,9 @@ def _gen_word(query, news, web, trend, now_str, table_data=None, youtube=None) -
     for part in insight_parts:
         doc.add_paragraph(part)
 
+    # ── 분야별 전략 관점 (도메인 특화) ──
+    _render_domain_strategy_word(doc, domain, Pt, RGBColor)
+
     # ══ References ══
     doc.add_page_break()
     h = doc.add_heading(f"{current_sec}. 참고문헌 (References)", level=2)
@@ -1803,6 +2464,7 @@ def _gen_word_master(context_list, now_str) -> bytes:
 
     valid_items = [item for item in context_list if isinstance(item, dict)]
     doc = Document()
+    _set_update_fields_on_open(doc)
 
     # ══════════ Title Page ══════════
     for _ in range(4):
@@ -1833,21 +2495,26 @@ def _gen_word_master(context_list, now_str) -> bytes:
 
     doc.add_page_break()
 
-    # ══════════ Table of Contents ══════════
-    toc_h = doc.add_heading("목차 (Table of Contents)", level=2)
-    _add_bookmark(toc_h, "toc")
+    # ══════════ Table of Contents (표준 TOC 필드 + 캐시 항목) ══════════
+    # 목차 라벨은 헤딩이 아닌 문단으로 — Word TOC 자동 갱신 시 목차 자신이 항목에 포함되지 않도록.
+    toc_label = doc.add_paragraph()
+    _add_bookmark(toc_label, "toc")
+    _tlr = toc_label.add_run("목차 (Table of Contents)")
+    _tlr.bold = True
+    _tlr.font.size = Pt(15)
+    _tlr.font.color.rgb = RGBColor(0x1A, 0x23, 0x7E)
 
-    # Section 0: Executive Overview
-    _add_toc_entry(doc, "I", "총괄 분석 개요 (Executive Overview)", "sec_overview")
-    _add_toc_entry(doc, "II", "분야별 트렌드 비교 차트", "sec_comparison")
-
+    master_entries = [
+        ("I", "총괄 분석 개요 (Executive Overview)", "sec_overview"),
+        ("II", "분야별 트렌드 비교 차트", "sec_comparison"),
+    ]
     for i, item in enumerate(valid_items):
         expert_name = item.get("expert", item.get("query", f"분야 {i + 1}"))
         domain = _match_expert_domain(item.get("query", ""), expert_name)
-        bm_name = f"expert_{i}"
-        _add_toc_entry(doc, i + 1, f"{domain.get('icon', '📊')} {expert_name}", bm_name)
+        master_entries.append((str(i + 1), f"{domain.get('icon', '📊')} {expert_name}", f"expert_{i}"))
+    master_entries.append(("★", "참고문헌 (References)", "sec_master_refs"))
 
-    _add_toc_entry(doc, "★", "참고문헌 (References)", "sec_master_refs")
+    _add_standard_toc(doc, master_entries, Pt, RGBColor)
 
     doc.add_page_break()
 
@@ -2030,6 +2697,33 @@ def _gen_word_master(context_list, now_str) -> bytes:
 
         doc.add_paragraph(expert_text)
 
+        # ── 분야 전문 심층 분석 (compact) ──
+        dd = _domain_dd(domain)
+        if dd.get("lens"):
+            doc.add_paragraph("")
+            p = doc.add_paragraph()
+            run = p.add_run("▶ 분야 전문 관점")
+            run.bold = True
+            for t_, d_ in dd["lens"][:3]:
+                bp = doc.add_paragraph(style="List Bullet")
+                rt = bp.add_run(f"{t_} — ")
+                rt.bold = True
+                rt.font.size = Pt(9)
+                bp.add_run(d_).font.size = Pt(9)
+            _m_terms = _query_key_terms(query)
+            _m_figs = _extract_figures_from_items((news or []) + (web or []), limit=5)
+            doc.add_paragraph(_domain_narrative(domain, query, _m_terms, _m_figs, stats))
+            if dd.get("risks"):
+                rp = doc.add_paragraph(f"  리스크: {' · '.join(dd['risks'])}")
+                for rn in rp.runs:
+                    rn.font.size = Pt(9)
+                    rn.font.color.rgb = RGBColor(0x55, 0x55, 0x55)
+            if dd.get("strategy"):
+                sp = doc.add_paragraph(f"  전략: {' / '.join(dd['strategy'])}")
+                for rn in sp.runs:
+                    rn.font.size = Pt(9)
+                    rn.font.color.rgb = RGBColor(0x55, 0x55, 0x55)
+
         # Disclaimer
         if domain.get("disclaimer"):
             p = doc.add_paragraph()
@@ -2191,6 +2885,13 @@ def _gen_text(query, news, web, trend, now_str, table_data=None, youtube=None) -
         if figs:
             lines.append("  추출 수치·사실: " + " · ".join(figs))
             lines.append("  ※ 자동 추출 참고값 — 원문 링크로 검증 요망")
+        # 분야 전문 심층 분석 (검색 종류 맞춤)
+        _dd_stats = None
+        if trend:
+            _vals = [r.get("Trend", 0) for r in trend]
+            if len(_vals) >= 2:
+                _dd_stats = _calc_statistics(_vals)
+        lines.extend(_domain_deepdive_text_lines(_match_expert_domain(query), query, _dd_stats, figs, terms))
         lines.append("")
 
     if trend:
@@ -2282,6 +2983,16 @@ def _gen_text_master(context_list, now_str) -> bytes:
         for w in item.get("web", [])[:3]:
             lines.append(f"  웹: {w.get('title', '')}")
             lines.append(f"      {w.get('link', '')}")
+        # 분야 전문 심층 분석
+        _m_domain = _match_expert_domain(query, expert_name)
+        _m_stats = None
+        if trend:
+            _m_vals = [r.get("Trend", 0) for r in trend]
+            if len(_m_vals) >= 2:
+                _m_stats = _calc_statistics(_m_vals)
+        _m_rel, _m_terms, _, _ = _rank_relevant_items(query, item.get("news", []), item.get("web", []))
+        _m_figs = _extract_figures_from_items(_m_rel, limit=6)
+        lines.extend(_domain_deepdive_text_lines(_m_domain, query, _m_stats, _m_figs, _m_terms))
         lines.append("")
     return "\n".join(lines).encode("utf-8")
 
