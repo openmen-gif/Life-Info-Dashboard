@@ -95,6 +95,7 @@ def _render_index_chart(symbol: str, name: str, period: str = "1mo"):
     data = fetch_stock_data(symbol, period=period)
     if data.get("ok") and data.get("history"):
         df = pd.DataFrame(data["history"])
+        df["Date"] = pd.to_datetime(df["Date"])
         st.line_chart(df.set_index("Date")["Close"])
 
         prices = [r["Close"] for r in data["history"]]
@@ -113,6 +114,7 @@ def _render_kr_index_chart(code: str, name: str, period: str = "1mo"):
     data = fetch_kr_index(code, period=period)
     if data.get("ok") and data.get("history"):
         df = pd.DataFrame(data["history"])
+        df["Date"] = pd.to_datetime(df["Date"])
         st.line_chart(df.set_index("Date")["Close"])
 
         prices = [r["Close"] for r in data["history"]]
@@ -246,7 +248,7 @@ with tab_compare:
                 us_norm = [p / us_prices[0] * 100 for p in us_prices[:min_len]]
                 dates = [r["Date"] for r in kr_d_chart["history"][:min_len]]
                 df_cmp = pd.DataFrame({
-                    "Date": dates,
+                    "Date": pd.to_datetime(dates),
                     kr_name: kr_norm,
                     us_name: us_norm,
                 }).set_index("Date")
@@ -330,6 +332,7 @@ with tab_watchlist:
             if d.get("ok") and d.get("history"):
                 st.markdown(f"**{sym}**")
                 df = pd.DataFrame(d["history"])
+                df["Date"] = pd.to_datetime(df["Date"])
                 st.line_chart(df.set_index("Date")["Close"])
 
         # 관심 종목 관련 뉴스

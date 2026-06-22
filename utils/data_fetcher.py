@@ -1051,7 +1051,7 @@ def fetch_kr_index(code: str = "KOSPI", period: str = "1mo") -> dict:
                 close_val = float(str(close_str).replace(",", ""))
                 date_str = item.get("localTradedAt", "")
                 if date_str and len(date_str) >= 10:
-                    date_fmt = date_str[5:10].replace("-", "-")
+                    date_fmt = date_str[:10]   # YYYY-MM-DD (연도 포함 — 트레일링 구간 정렬 보장)
                 else:
                     date_fmt = ""
                 if close_val > 0:
@@ -1114,7 +1114,7 @@ def fetch_stock_data(symbol: str, period: str = "5d") -> dict:
             for dt, row in hist.iterrows():
                 vol = row.get("Volume", 0)
                 hist_records.append({
-                    "Date": dt.strftime("%m-%d"),
+                    "Date": dt.strftime("%Y-%m-%d"),
                     "Close": round(float(row["Close"]), 2),
                     "Volume": int(vol) if vol else 0,
                 })
