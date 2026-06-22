@@ -1083,15 +1083,17 @@ def _add_toc_field(doc, levels: str = "2-3"):
 
 
 def _add_pageref_run(paragraph, bookmark, Pt, RGBColor):
-    """PAGEREF 필드 run 추가 — Word가 열릴 때 북마크의 실제 페이지번호로 갱신."""
+    """PAGEREF 필드 run 추가 — Word가 열릴 때 북마크의 실제 페이지번호로 갱신(하이퍼링크 아님)."""
     from docx.oxml.ns import qn
     from docx.oxml import OxmlElement
-    r = paragraph.add_run()._r
+    run = paragraph.add_run()
+    run.font.size = Pt(10.5)
+    r = run._r
     fb = OxmlElement("w:fldChar")
     fb.set(qn("w:fldCharType"), "begin")
     instr = OxmlElement("w:instrText")
     instr.set(qn("xml:space"), "preserve")
-    instr.text = f' PAGEREF {bookmark} \\h '
+    instr.text = f' PAGEREF {bookmark} '  # \\h 미사용 = 페이지번호만(링크 아님)
     fs = OxmlElement("w:fldChar")
     fs.set(qn("w:fldCharType"), "separate")
     t = OxmlElement("w:t")
@@ -1103,15 +1105,16 @@ def _add_pageref_run(paragraph, bookmark, Pt, RGBColor):
 
 
 def _add_standard_toc(doc, entries, Pt, RGBColor):
-    """표준 Word TOC 필드 + 캐시된 실제 항목(번호·제목·점선리더·PAGEREF·북마크 클릭링크).
+    """표준 Word TOC 필드 + 캐시된 일반 텍스트 항목(번호·제목·점선리더·PAGEREF 페이지번호).
 
-    entries: list of (label, title, bookmark). Word에서 열면 헤딩 기반으로 목차·페이지번호가
-    자동 갱신되고, 모바일/웹/LibreOffice 등 필드 미지원 뷰어에서도 캐시된 제목·링크가 보인다.
+    entries: list of (label, title, bookmark). **하이퍼링크 없는 표준 목차** — 항목은 검은
+    일반 텍스트, 우측에 점선 리더 + 페이지번호. Word에서 열면 헤딩 기반으로 목차·페이지번호가
+    자동 갱신된다(\\h 미사용이라 항목이 파란 링크로 바뀌지 않음). 하이퍼링크는 출처/원문에만 사용.
     """
     from docx.oxml.ns import qn
     from docx.oxml import OxmlElement
 
-    # ── TOC 필드 시작 (begin + instrText + separate) ──
+    # ── TOC 필드 시작 (begin + instrText + separate) — \h(하이퍼링크) 미사용 = 표준 목차 ──
     p = doc.add_paragraph()
     r = p.add_run()._r
     fb = OxmlElement("w:fldChar")
@@ -1119,13 +1122,13 @@ def _add_standard_toc(doc, entries, Pt, RGBColor):
     fb.set(qn("w:dirty"), "true")
     instr = OxmlElement("w:instrText")
     instr.set(qn("xml:space"), "preserve")
-    instr.text = ' TOC \\o "2-2" \\h \\z \\u '
+    instr.text = ' TOC \\o "2-2" \\z \\u '
     fs = OxmlElement("w:fldChar")
     fs.set(qn("w:fldCharType"), "separate")
     for el in (fb, instr, fs):
         r.append(el)
 
-    # ── 캐시된 목차 항목 (필드 갱신 전까지 표시) ──
+    # ── 캐시된 목차 항목 (필드 갱신 전까지 표시) — 일반 텍스트(하이퍼링크 아님) ──
     for label, title, bm in entries:
         ep = doc.add_paragraph()
         pPr = ep._p.get_or_add_pPr()
@@ -1136,7 +1139,9 @@ def _add_standard_toc(doc, entries, Pt, RGBColor):
         tab.set(qn("w:pos"), "9072")  # ~16cm 우측 정렬 점선 리더
         tabs.append(tab)
         pPr.append(tabs)
-        _add_internal_link(ep, f"{label}. {title}", bm)
+        run = ep.add_run(f"{label}. {title}")
+        run.font.size = Pt(10.5)
+        run.font.color.rgb = RGBColor(0x00, 0x00, 0x00)
         tr = OxmlElement("w:r")
         tr.append(OxmlElement("w:tab"))
         ep._p.append(tr)
@@ -1154,7 +1159,7 @@ def _plan_individual_sections(query, news, web, trend, table_data, youtube):
     """개별 리포트의 섹션 순서·번호·북마크 플랜 — TOC와 본문 헤딩 번호를 일치시킨다.
     조건은 _gen_word 본문의 섹션 생성 조건과 정확히 동일해야 한다."""
     plan = [("분석 개요 (Executive Summary)", "sec_summary")]
-    if query and (news or web):
+    if query:
         plan.append(("검색 주제 심층 분석", "sec_focus"))
     if trend:
         plan.append(("트렌드 분석 및 통계", "sec_trend"))
@@ -1772,8 +1777,8 @@ def _gen_word(query, news, web, trend, now_str, table_data=None, youtube=None) -
         for m in domain["metrics"]:
             doc.add_paragraph(f"  • {m}", style="List Bullet")
 
-    # ══ 검색 주제 심층 분석 (질문 맞춤 코너 — 기본 포맷 보존 + 주제 특화) ══
-    if query and (news or web):
+    # ══ 검색 주제 심층 분석 (질문 맞춤 코너 — 기본 포맷 보존 + 분야 전문 분석은 데이터 유무와 무관하게 항상) ══
+    if query:
         doc.add_paragraph("")
         h = doc.add_heading(f"{current_sec}. 검색 주제 심층 분석", level=2)
         _add_bookmark(h, "sec_focus")
@@ -2866,8 +2871,8 @@ def _gen_word_master(context_list, now_str) -> bytes:
 def _gen_text(query, news, web, trend, now_str, table_data=None, youtube=None) -> bytes:
     lines = [f"생활정보 분석 리포트 — {query}", f"생성일시: {now_str}", "=" * 60, ""]
 
-    # ── 검색 주제 심층 분석 (질문 맞춤 코너) ──
-    if query and (news or web):
+    # ── 검색 주제 심층 분석 (질문 맞춤 코너 — 분야 전문 분석은 항상) ──
+    if query:
         relevant, terms, n_matched, scope = _rank_relevant_items(query, news, web)
         lines.append(f"[ 검색 주제 심층 분석 — '{query}' ]")
         if terms:
