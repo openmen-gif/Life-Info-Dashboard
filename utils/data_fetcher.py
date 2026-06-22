@@ -1050,10 +1050,9 @@ def fetch_kr_index(code: str = "KOSPI", period: str = "1mo") -> dict:
                 close_str = item.get("closePrice", "0")
                 close_val = float(str(close_str).replace(",", ""))
                 date_str = item.get("localTradedAt", "")
-                if date_str and len(date_str) >= 10:
-                    date_fmt = date_str[:10]   # YYYY-MM-DD (연도 포함 — 트레일링 구간 정렬 보장)
-                else:
-                    date_fmt = ""
+                if not (date_str and len(date_str) >= 10):
+                    continue            # 날짜 없는 레코드는 건너뜀(차트 파싱 오류 방지)
+                date_fmt = date_str[:10]   # YYYY-MM-DD (연도 포함 — 트레일링 구간 정렬 보장)
                 if close_val > 0:
                     history.append({"Date": date_fmt, "Close": round(close_val, 2), "Volume": 0})
 
@@ -1063,6 +1062,30 @@ def fetch_kr_index(code: str = "KOSPI", period: str = "1mo") -> dict:
                 low_val = min(closes)
         except Exception:
             pass
+
+        # 네이버 차트는 pageSize 한도로 3mo+(66·132·252)에서 빈 응답 → yfinance로 히스토리 폴백
+        _pdays = {"5d": 5, "1mo": 22, "3mo": 66, "6mo": 132, "1y": 252}.get(period, 22)
+        if _yf and len(history) < max(5, int(_pdays * 0.5)):
+            try:
+                _yf_code = {"KOSPI": "^KS11", "KOSDAQ": "^KQ11"}.get(code)
+                if _yf_code:
+                    _yh = _yf.Ticker(_yf_code).history(period=period)
+                    _yrecs = []
+                    for _dt, _row in _yh.iterrows():
+                        _cv = float(_row["Close"])
+                        if _cv == _cv and _cv > 0:          # NaN 제외
+                            _vol = _row.get("Volume", 0)
+                            _yrecs.append({
+                                "Date": _dt.strftime("%Y-%m-%d"),
+                                "Close": round(_cv, 2),
+                                "Volume": int(_vol) if _vol == _vol else 0,
+                            })
+                    if len(_yrecs) > len(history):
+                        history = _yrecs
+                        _c = [h["Close"] for h in history]
+                        high_val, low_val = max(_c), min(_c)
+            except Exception:
+                pass
 
         return {
             "name": code, "symbol": code,
