@@ -313,6 +313,211 @@ def _news_flow_summary(news: list, query: str) -> str:
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# Query-focused analysis (검색 주제 맞춤 상세 코너)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+_QUERY_STOPWORDS = {
+    "분석", "세부", "기반", "대한", "관련", "최근", "동향", "현황", "정보", "추세",
+    "리포트", "보고서", "내용", "대해", "위한", "중심", "전반", "전체", "상세", "주요",
+    "어떻게", "무엇", "그리고", "또한", "전망", "예측", "방안", "비교", "검토",
+}
+
+
+def _query_key_terms(query: str) -> list[str]:
+    """질문에서 핵심 검색어(2자+ 한글/영문/숫자)를 추출 — 불용어 제외, 순서 보존."""
+    import re as _re
+    toks = _re.findall(r"[가-힣A-Za-z0-9]{2,}", query or "")
+    terms, seen = [], set()
+    for t in toks:
+        tl = t.lower()
+        if tl in _QUERY_STOPWORDS or tl in seen:
+            continue
+        seen.add(tl)
+        terms.append(t)
+    return terms[:10]
+
+
+def _detect_time_scope(query: str) -> str:
+    """질문의 기간 의도 감지 → 분석 범위 라벨('1년'·'6개월' 등). 없으면 ''."""
+    import re as _re
+    q = query or ""
+    m = _re.search(r"(\d+)\s*(년|개월|분기|주|일)", q)
+    if m:
+        return f"{m.group(1)}{m.group(2)}"
+    for k, label in [("연간", "1년"), ("1년", "1년"), ("장기", "장기"),
+                     ("분기", "분기"), ("월간", "1개월"), ("주간", "1주")]:
+        if k in q:
+            return label
+    return ""
+
+
+def _score_item_relevance(item: dict, terms: list[str]) -> int:
+    """뉴스/웹 항목 텍스트와 검색어 일치 빈도 점수."""
+    if not terms:
+        return 0
+    text = (str(item.get("title", "")) + " " +
+            str(item.get("snippet", "") or item.get("source", ""))).lower()
+    return sum(text.count(t.lower()) for t in terms)
+
+
+def _extract_figures_from_items(items: list, limit: int = 8) -> list[str]:
+    """뉴스/웹 본문에서 핵심 수치(%, 통화, 배수·포인트, 연도)를 자동 추출."""
+    import re as _re
+    pats = [
+        r"[+\-]?\d[\d,\.]*\s?%",
+        r"\d[\d,\.]*\s?(?:조|억|만)?\s?(?:원|달러|USD|\$|엔|위안)",
+        r"\d[\d,\.]*\s?(?:배|bp|포인트|건|명|개월|개)",
+        r"20\d{2}\s?년",
+    ]
+    out, seen = [], set()
+    for it in items:
+        text = str(it.get("title", "")) + " " + str(it.get("snippet", "") or "")
+        for p in pats:
+            for m in _re.findall(p, text):
+                s = m.strip()
+                key = _re.sub(r"\s+", "", s)
+                if s and key not in seen and len(s) <= 24:
+                    seen.add(key)
+                    out.append(s)
+                    if len(out) >= limit:
+                        return out
+    return out
+
+
+def _rank_relevant_items(query: str, news: list, web: list, top: int = 6):
+    """검색어 관련성으로 뉴스+웹을 순위화. (relevant_items, key_terms, n_matched, time_scope)."""
+    terms = _query_key_terms(query)
+    scope = _detect_time_scope(query)
+    items = []
+    for n in (news or []):
+        items.append({"_kind": "뉴스", **n, "_score": _score_item_relevance(n, terms)})
+    for w in (web or []):
+        items.append({"_kind": "웹", **w, "_score": _score_item_relevance(w, terms)})
+    items.sort(key=lambda x: x["_score"], reverse=True)
+    n_matched = len([it for it in items if it["_score"] > 0])
+    relevant = [it for it in items if it["_score"] > 0][:top] or items[:max(3, top // 2)]
+    return relevant, terms, n_matched, scope
+
+
+def _add_query_focus_section_word(doc, query, news, web, Pt, RGBColor):
+    """[Word] 검색 주제 맞춤 상세 코너 — 질문 의도에 맞춰 관련 자료를 선별·종합."""
+    relevant, terms, n_matched, scope = _rank_relevant_items(query, news, web)
+
+    doc.add_paragraph(
+        f"검색하신 주제 「{query}」에 초점을 맞춰, 수집된 뉴스·웹 자료 중 관련성이 높은 항목을 "
+        f"선별·종합하고 핵심 수치를 추출했습니다. (기본 분석 포맷은 이하 섹션에서 그대로 제공됩니다.)"
+    )
+    if terms:
+        doc.add_paragraph("▶ 핵심 검색어: " + "  ".join(f"【{t}】" for t in terms[:6]))
+    if scope:
+        doc.add_paragraph(
+            f"▶ 질문하신 기간 의도: '최근 {scope}' — 아래 자료의 시점·수치를 해당 기간 관점에서 종합 해석합니다."
+        )
+
+    # 주제 관련 핵심 자료
+    p = doc.add_paragraph()
+    r = p.add_run("▶ 주제 관련 핵심 자료 (관련도 순)")
+    r.bold = True
+    r.font.size = Pt(11)
+    if relevant:
+        for it in relevant:
+            title = _clean_text(it.get("title", ""))[:140]
+            link = it.get("link", "")
+            snip = _clean_text(it.get("snippet", "") or "")[:170]
+            pp = doc.add_paragraph(style="List Bullet")
+            tag = pp.add_run(f"[{it['_kind']}] ")
+            tag.bold = True
+            tag.font.size = Pt(9)
+            if link:
+                _add_hyperlink(pp, title, link)
+            else:
+                pp.add_run(title).font.size = Pt(9)
+            if snip:
+                sp = doc.add_paragraph(f"      {snip}")
+                for rn in sp.runs:
+                    rn.font.size = Pt(8)
+                    rn.font.color.rgb = RGBColor(0x66, 0x66, 0x66)
+    else:
+        doc.add_paragraph(
+            "주제와 직접 일치하는 자료가 충분치 않습니다. 검색어를 더 구체화하면(예: 종목·기간·지표 명시) "
+            "주제 맞춤 분석 정확도가 높아집니다."
+        )
+
+    # 추출 수치
+    figs = _extract_figures_from_items(relevant, limit=8)
+    if figs:
+        p = doc.add_paragraph()
+        r = p.add_run("▶ 자료에서 추출한 핵심 수치·사실")
+        r.bold = True
+        r.font.size = Pt(11)
+        doc.add_paragraph("   " + "  ·  ".join(figs))
+        note = doc.add_paragraph(
+            "   ※ 위 수치는 기사·검색 결과 본문에서 자동 추출한 참고값입니다. 정확성은 각 원문 링크로 검증하십시오."
+        )
+        for rn in note.runs:
+            rn.font.size = Pt(8)
+            rn.font.color.rgb = RGBColor(0x88, 0x88, 0x88)
+
+    # 주제 맞춤 시사점
+    p = doc.add_paragraph()
+    r = p.add_run("▶ 주제 맞춤 시사점")
+    r.bold = True
+    r.font.size = Pt(11)
+    insight = f"'{query}' 키워드에 직접 매칭된 자료는 {n_matched}건입니다. "
+    if scope:
+        insight += (
+            f"질문하신 '{scope}' 관점에서는 단일 시점이 아닌 기간 전반의 방향성과 변동 요인을 "
+            f"함께 검토해야 하며, 위 자료의 시점·수치를 시계열로 연결해 추세를 판단하시기 바랍니다. "
+        )
+    if n_matched == 0:
+        insight += "현재 검색어와 직접 매칭이 약하므로, 더 구체적인 키워드로 재검색을 권장합니다. "
+    insight += "정량 통계·감성·트렌드 등 표준 분석은 이하 섹션을 참조하세요."
+    doc.add_paragraph(insight)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Standard Word TOC field (표준 목차 — 헤딩 기반 자동 페이지번호)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def _set_update_fields_on_open(doc):
+    """Word가 문서를 열 때 TOC 등 필드를 자동 갱신하도록 설정."""
+    from docx.oxml.ns import qn
+    from docx.oxml import OxmlElement
+    try:
+        settings = doc.settings.element
+        if settings.find(qn("w:updateFields")) is None:
+            uf = OxmlElement("w:updateFields")
+            uf.set(qn("w:val"), "true")
+            settings.append(uf)
+    except Exception:
+        pass
+
+
+def _add_toc_field(doc, levels: str = "2-3"):
+    """표준 Word TOC 필드 삽입 — 헤딩 스타일에서 항목·페이지번호 자동 생성."""
+    from docx.oxml.ns import qn
+    from docx.oxml import OxmlElement
+    para = doc.add_paragraph()
+    run = para.add_run()
+    r = run._r
+    fb = OxmlElement("w:fldChar")
+    fb.set(qn("w:fldCharType"), "begin")
+    fb.set(qn("w:dirty"), "true")
+    instr = OxmlElement("w:instrText")
+    instr.set(qn("xml:space"), "preserve")
+    instr.text = f' TOC \\o "{levels}" \\h \\z \\u '
+    fs = OxmlElement("w:fldChar")
+    fs.set(qn("w:fldCharType"), "separate")
+    placeholder = OxmlElement("w:t")
+    placeholder.text = "[목차] 항목 위에서 우클릭 → '필드 업데이트(Update Field)'를 선택하면 페이지 번호가 채워집니다."
+    fe = OxmlElement("w:fldChar")
+    fe.set(qn("w:fldCharType"), "end")
+    for el in (fb, instr, fs, placeholder, fe):
+        r.append(el)
+    return para
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # Chart generation
 # ═══════════════════════════════════════════════════════════════════════════════
 
@@ -793,6 +998,7 @@ def _gen_word(query, news, web, trend, now_str, table_data=None, youtube=None) -
 
     domain = _match_expert_domain(query)
     doc = Document()
+    _set_update_fields_on_open(doc)
 
     # ── Title Page ──
     for _ in range(3):
@@ -822,40 +1028,13 @@ def _gen_word(query, news, web, trend, now_str, table_data=None, youtube=None) -
 
     doc.add_page_break()
 
-    # ── Table of Contents ──
-    sec_num = 1
-    toc_heading = doc.add_heading("목차 (Table of Contents)", level=2)
-    _add_bookmark(toc_heading, "toc")
-
-    sections = []
-    sections.append((sec_num, "분석 개요 (Executive Summary)", "sec_summary"))
-    sec_num += 1
-    if trend:
-        sections.append((sec_num, "트렌드 분석 및 통계", "sec_trend"))
-        sec_num += 1
-        sections.append((sec_num, "변화율 분석 및 이상치 탐지", "sec_change_rate"))
-        sec_num += 1
-    if table_data:
-        sections.append((sec_num, "데이터 현황 및 통계 분석", "sec_table_data"))
-        sec_num += 1
-    if news:
-        sections.append((sec_num, "뉴스 심층 분석 (감성·키워드·출처)", "sec_news_analysis"))
-        sec_num += 1
-        sections.append((sec_num, "주요 뉴스 목록", "sec_news_list"))
-        sec_num += 1
-    if web:
-        sections.append((sec_num, "웹 검색 결과 분석", "sec_web"))
-        sec_num += 1
-    if youtube:
-        sections.append((sec_num, "관련 YouTube 영상", "sec_youtube"))
-        sec_num += 1
-    sections.append((sec_num, "전문가 종합 인사이트", "sec_expert"))
-    sec_num += 1
-    sections.append((sec_num, "참고문헌 (References)", "sec_refs"))
-
-    for num, title_text, bm in sections:
-        _add_toc_entry(doc, num, title_text, bm)
-
+    # ── 목차 (표준 Word TOC 필드 — 헤딩 기반 실제 페이지번호 자동 생성) ──
+    _toc_label = doc.add_paragraph()
+    _tlr = _toc_label.add_run("목차 (Table of Contents)")
+    _tlr.bold = True
+    _tlr.font.size = Pt(15)
+    _tlr.font.color.rgb = RGBColor(0x1A, 0x23, 0x7E)
+    _add_toc_field(doc, levels="2-2")
     doc.add_paragraph("")
 
     # ── Disclaimer ──
@@ -934,6 +1113,14 @@ def _gen_word(query, news, web, trend, now_str, table_data=None, youtube=None) -
         run.font.size = Pt(10)
         for m in domain["metrics"]:
             doc.add_paragraph(f"  • {m}", style="List Bullet")
+
+    # ══ 검색 주제 심층 분석 (질문 맞춤 코너 — 기본 포맷 보존 + 주제 특화) ══
+    if query and (news or web):
+        doc.add_paragraph("")
+        h = doc.add_heading(f"{current_sec}. 검색 주제 심층 분석", level=2)
+        _add_bookmark(h, "sec_focus")
+        current_sec += 1
+        _add_query_focus_section_word(doc, query, news, web, Pt, RGBColor)
 
     # ══ 2. Trend Analysis ══
     if trend:
@@ -1984,6 +2171,27 @@ def _gen_word_master(context_list, now_str) -> bytes:
 
 def _gen_text(query, news, web, trend, now_str, table_data=None, youtube=None) -> bytes:
     lines = [f"생활정보 분석 리포트 — {query}", f"생성일시: {now_str}", "=" * 60, ""]
+
+    # ── 검색 주제 심층 분석 (질문 맞춤 코너) ──
+    if query and (news or web):
+        relevant, terms, n_matched, scope = _rank_relevant_items(query, news, web)
+        lines.append(f"[ 검색 주제 심층 분석 — '{query}' ]")
+        if terms:
+            lines.append("  핵심 검색어: " + ", ".join(terms[:6]))
+        if scope:
+            lines.append(f"  기간 의도: 최근 {scope} 관점")
+        lines.append(f"  직접 매칭 자료: {n_matched}건")
+        if relevant:
+            lines.append("  주제 관련 핵심 자료(관련도 순):")
+            for it in relevant:
+                lines.append(f"    - [{it['_kind']}] {_clean_text(it.get('title', ''))[:120]}")
+                if it.get("link"):
+                    lines.append(f"      링크: {it.get('link')}")
+        figs = _extract_figures_from_items(relevant, limit=8)
+        if figs:
+            lines.append("  추출 수치·사실: " + " · ".join(figs))
+            lines.append("  ※ 자동 추출 참고값 — 원문 링크로 검증 요망")
+        lines.append("")
 
     if trend:
         values = [r.get("Trend", 0) for r in trend]
