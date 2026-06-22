@@ -7,7 +7,7 @@ from utils.config import API_BASE_URL, IS_API_MODE
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# Expert Domain Knowledge — derived from skill_md/*.md
+# Expert Domain Knowledge — derived from 02_생활정보/00_Skill_MD/life-*.md (이전됨 2026-06-18)
 # ═══════════════════════════════════════════════════════════════════════════════
 
 EXPERT_ANALYSIS = {
