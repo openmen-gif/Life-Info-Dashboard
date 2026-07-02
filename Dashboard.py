@@ -32,6 +32,16 @@ pages = {
         st.Page("pages/13_Shopping.py", title="쇼핑/소비", icon="🛍️"),
         st.Page("pages/10_Travel.py", title="여행", icon="✈️"),
     ],
+    "💰 금융·투자": [
+        st.Page("pages/05_Finance.py", title="생활금융", icon="💰"),
+        st.Page("pages/12_Stock.py", title="주식 분석", icon="📈"),
+        st.Page("pages/18_Exchange.py", title="환율/유가", icon="💱"),
+        st.Page("pages/32_Crypto.py", title="암호화폐", icon="🪙"),
+    ],
+    "🏠 부동산·자동차": [
+        st.Page("pages/08_RealEstate.py", title="부동산", icon="🏠"),
+        st.Page("pages/29_Car.py", title="자동차", icon="🚗"),
+    ],
     "🏥 건강·가족": [
         st.Page("pages/06_Health.py", title="건강", icon="🏥"),
         st.Page("pages/30_Insurance.py", title="보험/연금", icon="🛡️"),
@@ -39,16 +49,6 @@ pages = {
         st.Page("pages/09_Education.py", title="교육", icon="📚"),
         st.Page("pages/37_Demography.py", title="인구·결혼", icon="👰"),
         st.Page("pages/38_Silver.py", title="실버산업", icon="👴"),
-    ],
-    "🏠 부동산·자동차": [
-        st.Page("pages/08_RealEstate.py", title="부동산", icon="🏠"),
-        st.Page("pages/29_Car.py", title="자동차", icon="🚗"),
-    ],
-    "💰 금융·투자": [
-        st.Page("pages/05_Finance.py", title="생활금융", icon="💰"),
-        st.Page("pages/12_Stock.py", title="주식 분석", icon="📈"),
-        st.Page("pages/18_Exchange.py", title="환율/유가", icon="💱"),
-        st.Page("pages/32_Crypto.py", title="암호화폐", icon="🪙"),
     ],
     "🏢 비즈니스": [
         st.Page("pages/20_Business.py", title="사업/창업", icon="🏢"),
