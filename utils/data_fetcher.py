@@ -1010,6 +1010,70 @@ def fetch_exchange_rates() -> dict:
         return {"rates": {}, "updated": str(e), "ok": False}
 
 
+_FX_PERIOD_DAYS = {"5d": 7, "1mo": 35, "3mo": 95, "6mo": 185, "1y": 370}
+
+
+def _fx_period_to_days(period: str) -> int:
+    """환율 기간 코드 → Frankfurter 조회용 시작일 오프셋(달력일).
+    주말·공휴일 갭을 감안해 여유를 둔다."""
+    return _FX_PERIOD_DAYS.get(period, 35)
+
+
+def _parse_frankfurter_timeseries(payload: dict, symbols) -> dict:
+    """Frankfurter 시계열 응답 → {code: [{"Date","Close"}...]} (날짜 오름차순, Close>0만).
+
+    payload 예: {"base":"USD","rates":{"2026-06-25":{"KRW":1542.92,...}, ...}}
+    """
+    rates = (payload or {}).get("rates", {}) or {}
+    history: dict = {code: [] for code in symbols}
+    for date_str in sorted(rates.keys()):
+        day = rates.get(date_str) or {}
+        for code in symbols:
+            val = day.get(code)
+            if val is None:
+                continue
+            try:
+                close = round(float(val), 4)
+            except (TypeError, ValueError):
+                continue
+            if close > 0:
+                history[code].append({"Date": date_str, "Close": close})
+    return history
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def fetch_fx_history(symbols: tuple = ("KRW", "EUR", "JPY", "CNY"),
+                     period: str = "1mo") -> dict:
+    """Frankfurter(ECB)로 USD 기준 환율 히스토리 조회.
+
+    Returns: {"ok": bool, "history": {code: [{"Date","Close"}...]}, "updated": str}
+    실패 시 {"ok": False, "history": {}}.
+    """
+    try:
+        end = datetime.date.today()
+        start = end - datetime.timedelta(days=_fx_period_to_days(period))
+        sym_csv = ",".join(symbols)
+        url = (
+            f"https://api.frankfurter.dev/v1/{start.isoformat()}..{end.isoformat()}"
+            f"?base=USD&symbols={sym_csv}"
+        )
+        _UA = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+               "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"}
+        r = requests.get(url, headers=_UA, timeout=10)
+        r.raise_for_status()
+        payload = r.json()
+        history = _parse_frankfurter_timeseries(payload, symbols)
+        if not any(history.values()):
+            return {"ok": False, "history": {}}
+        return {
+            "ok": True,
+            "history": history,
+            "updated": payload.get("end_date", end.isoformat()),
+        }
+    except Exception:
+        return {"ok": False, "history": {}}
+
+
 def _kr_period_to_range(period: str) -> str:
     """yfinance period → 네이버 차트 range 변환."""
     return {"5d": "1W", "1mo": "1M", "3mo": "3M", "6mo": "6M", "1y": "1Y"}.get(period, "1M")
