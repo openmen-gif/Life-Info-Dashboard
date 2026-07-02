@@ -159,20 +159,19 @@ with tab_oil:
             else:
                 col.metric(f"{icon} {name}", "N/A")
 
-    # WTI 상세 차트
-    st.markdown("### 📈 WTI 원유 최근 추이")
-    wti = fetch_stock_data("CL=F", period="1mo")
-    if wti.get("ok") and wti.get("history"):
-        df_wti = pd.DataFrame(wti["history"])
-        st.line_chart(df_wti.set_index("Date")["Close"])
-
-        st.markdown("#### 📊 통계")
-        prices = [r["Close"] for r in wti["history"]]
-        sc1, sc2, sc3, sc4 = st.columns(4)
-        sc1.metric("최고가", f"${max(prices):,.2f}")
-        sc2.metric("최저가", f"${min(prices):,.2f}")
-        sc3.metric("평균", f"${sum(prices)/len(prices):,.2f}")
-        sc4.metric("변동폭", f"${max(prices)-min(prices):,.2f}")
+    # ── 유가 추세 (기간 선택 + 4종 탭) ────────────────────────────────
+    st.markdown("### 📈 유가 추세")
+    oil_period = st.selectbox(
+        "차트 기간", ["5d", "1mo", "3mo", "6mo", "1y"], index=1, key="oil_trend_period"
+    )
+    oil_trend_tabs = st.tabs([name for _sym, (name, _icon) in OIL_INDICES.items()])
+    for _tab, (symbol, (name, icon)) in zip(oil_trend_tabs, OIL_INDICES.items()):
+        with _tab:
+            st.markdown(f"#### {icon} {name} 추이")
+            d = fetch_stock_data(symbol, period=oil_period)
+            _render_trend_with_stats(
+                d.get("history", []) if d.get("ok") else [], unit="$", decimals=2
+            )
 
     # 유가 관련 뉴스
     st.markdown("### 📰 유가 관련 뉴스")
