@@ -343,7 +343,7 @@ def render_expert_page(
             with cols[i % len(cols)]:
                 # [주석] 상단 메트릭 카드는 5분 캐시(fetch_stock_data)를 타서 실시간성을 최고로 보장합니다.
                 d = fetch_stock_data(symbol, period="5d")
-                if d.get("ok"):
+                if d and d.get("ok"):
                     price_fmt = f"${d['price']:,.2f}" if not symbol.endswith((".KS", ".KQ")) else f"{d['price']:,.0f}"
                     delta = f"{d['change']:+,.2f} ({d['change_pct']:+.2f}%)"
                     st.metric(name, price_fmt, delta=delta)
@@ -390,7 +390,7 @@ def render_expert_page(
             with _tab:
                 st.markdown(f"##### 📈 {name} ({symbol}) 추이")
                 d = prefetched_results.get(symbol, {"ok": False})
-                if d.get("ok") and d.get("history"):
+                if d and d.get("ok") and d.get("history"):
                     _hist = slice_history(d["history"], chart_period)
                     render_line_tight(_hist)
                     prices = [r["Close"] for r in _hist]
