@@ -225,7 +225,7 @@ def _render_video_card(v: dict, show_desc: bool = False):
 
 
 def render_youtube_section(query: str, limit: int = 12, per_page: int = 4,
-                           sort: str = "views") -> list[dict]:
+                           sort: str = "views", auto_load: bool = False) -> list[dict]:
     """Shared helper: 영상 그리드 섹션(지연 로드 게이트 + 정렬 + 페이지네이션).
 
     화면부는 내부 fragment(_youtube_section_fragment)가 담당해 버튼·정렬·페이지
@@ -233,7 +233,7 @@ def render_youtube_section(query: str, limit: int = 12, per_page: int = 4,
     전체 실행 시점에 캐시 히트로 채워진다."""
     _tl = "d" if sort == "latest" else None
     _yt_gate = f"yt_loaded_{_qkey(query)}"
-    _youtube_section_fragment(query, limit, per_page, sort, _tl, _yt_gate)
+    _youtube_section_fragment(query, limit, per_page, sort, _tl, _yt_gate, auto_load)
     if st.session_state.get(_yt_gate):
         try:
             return fetch_youtube_search(query, limit=limit, timelimit=_tl) or []
@@ -244,9 +244,12 @@ def render_youtube_section(query: str, limit: int = 12, per_page: int = 4,
 
 @st.fragment
 def _youtube_section_fragment(query: str, limit: int, per_page: int,
-                              sort: str, _tl, _yt_gate: str) -> None:
+                              sort: str, _tl, _yt_gate: str,
+                              auto_load: bool = False) -> None:
     # 지연 로드 게이트 — 유튜브 수집(수 초)은 페이지 첫 로딩의 최대 지연 요인이라
     # 버튼 클릭 시에만 표시한다. fragment라 클릭 시 이 섹션만 재실행된다.
+    if auto_load:
+        st.session_state[_yt_gate] = True
     if not st.session_state.get(_yt_gate):
         # 백그라운드 프리페치 — 첫 로딩은 막지 않되, 수집·1차 정렬 대상 데이터를
         # 미리 캐시에 데워 버튼 클릭 시 즉시 표시되게 한다 (세션당 1회)

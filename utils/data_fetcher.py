@@ -513,7 +513,7 @@ def _fetch_weather_open_meteo(city: str) -> Optional[dict]:
     return None
 
 
-@st.cache_data(ttl=3600, show_spinner=False)
+@st.cache_data(ttl=60, show_spinner=False)
 def fetch_weather_series(city: str = "Seoul") -> dict:
     """Open-Meteo 한 번 호출로 기온 추이(지난 7일) + 예보(7일) 시계열 조회.
 
@@ -533,9 +533,9 @@ def fetch_weather_series(city: str = "Seoul") -> dict:
     )
     _UA = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
            "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"}
-    for _ in range(3):
+    for _ in range(2):
         try:
-            r = requests.get(url, timeout=15, headers=_UA)
+            r = requests.get(url, timeout=5, headers=_UA)
             r.raise_for_status()
             d = r.json()
             dly = d.get("daily", {})
