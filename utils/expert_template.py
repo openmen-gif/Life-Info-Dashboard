@@ -350,8 +350,21 @@ def render_expert_page(
 
         # 모든 ticker 차트 (st.tabs 형태로 모든 티커 지표 차트들을 기간 선택 selectbox 연동형으로 전면 배포)
         st.markdown(f"#### 📈 {title} 지표 추이 분석")
+        
+        # [주석] 모든 페이지/탭에서 선택 기간을 일관되게 공유하기 위해 전역 세션 상태를 양방향 연동합니다.
+        _periods = ["5d", "1mo", "3mo", "6mo", "1y"]
+        if "global_chart_period" not in st.session_state:
+            st.session_state.global_chart_period = "1mo"
+        _default_idx = _periods.index(st.session_state.global_chart_period) if st.session_state.global_chart_period in _periods else 1
+        
+        def _on_expert_period_change():
+            val = st.session_state.get(f"chart_period_sel_{title}")
+            if val:
+                st.session_state.global_chart_period = val
+
         chart_period = st.selectbox(
-            "차트 기간", ["5d", "1mo", "3mo", "6mo", "1y"], index=1, key=f"chart_period_{title}"
+            "차트 기간", _periods, index=_default_idx, 
+            key=f"chart_period_sel_{title}", on_change=_on_expert_period_change
         )
         
         # [주석] 탭 전환 시 동기식 순차 호출로 인한 프리즈를 예방하기 위해 

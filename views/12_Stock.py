@@ -152,7 +152,17 @@ def _render_stock_table(stocks: dict):
 # [주석] st.fragment 오동작으로 인한 selectbox 리셋 버그 예방을 위해 fragment를 걷어냅니다.
 # @st.fragment
 def _kr_trend_section():
-    period_kr = st.selectbox("차트 기간", ["5d", "1mo", "3mo", "6mo", "1y"], index=1, key="kr_period")
+    _periods = ["5d", "1mo", "3mo", "6mo", "1y"]
+    if "global_chart_period" not in st.session_state:
+        st.session_state.global_chart_period = "1mo"
+    _default_idx = _periods.index(st.session_state.global_chart_period) if st.session_state.global_chart_period in _periods else 1
+    
+    def _on_kr_period_change():
+        val = st.session_state.get("kr_period_sel")
+        if val:
+            st.session_state.global_chart_period = val
+
+    period_kr = st.selectbox("차트 기간", _periods, index=_default_idx, key="kr_period_sel", on_change=_on_kr_period_change)
     st.markdown("### 📈 KOSPI 추이")
     _render_kr_index_chart("KOSPI", "KOSPI", period_kr)
     st.markdown("### 📈 KOSDAQ 추이")
@@ -162,7 +172,17 @@ def _kr_trend_section():
 # [주석] st.fragment 오동작으로 인한 selectbox 리셋 버그 예방을 위해 fragment를 걷어냅니다.
 # @st.fragment
 def _us_trend_section():
-    period_us = st.selectbox("차트 기간", ["5d", "1mo", "3mo", "6mo", "1y"], index=1, key="us_period")
+    _periods = ["5d", "1mo", "3mo", "6mo", "1y"]
+    if "global_chart_period" not in st.session_state:
+        st.session_state.global_chart_period = "1mo"
+    _default_idx = _periods.index(st.session_state.global_chart_period) if st.session_state.global_chart_period in _periods else 1
+    
+    def _on_us_period_change():
+        val = st.session_state.get("us_period_sel")
+        if val:
+            st.session_state.global_chart_period = val
+
+    period_us = st.selectbox("차트 기간", _periods, index=_default_idx, key="us_period_sel", on_change=_on_us_period_change)
     st.markdown("### 📈 S&P 500 추이")
     _render_index_chart("^GSPC", "S&P 500", period_us)
     st.markdown("### 📈 NASDAQ 추이")
@@ -219,7 +239,17 @@ with tab_us:
 # [주석] st.fragment 오동작으로 인한 selectbox 리셋 버그 예방을 위해 fragment를 걷어냅니다.
 # @st.fragment
 def _compare_section():
-    period_cmp = st.selectbox("비교 기간", ["5d", "1mo", "3mo", "6mo", "1y"], index=1, key="cmp_period")
+    _periods = ["5d", "1mo", "3mo", "6mo", "1y"]
+    if "global_chart_period" not in st.session_state:
+        st.session_state.global_chart_period = "1mo"
+    _default_idx = _periods.index(st.session_state.global_chart_period) if st.session_state.global_chart_period in _periods else 1
+    
+    def _on_cmp_period_change():
+        val = st.session_state.get("cmp_period_sel")
+        if val:
+            st.session_state.global_chart_period = val
+
+    period_cmp = st.selectbox("비교 기간", _periods, index=_default_idx, key="cmp_period_sel", on_change=_on_cmp_period_change)
 
     compare_pairs = [
         ("069500.KS", "KOSPI", "^IXIC", "NASDAQ"),
@@ -349,7 +379,17 @@ with tab_watchlist:
         # @st.fragment
         def _watchlist_charts():
             st.markdown("### 📈 관심 종목 차트")
-            wl_period = st.selectbox("차트 기간", ["5d", "1mo", "3mo", "6mo", "1y"], index=1, key="wl_period")
+            _periods = ["5d", "1mo", "3mo", "6mo", "1y"]
+            if "global_chart_period" not in st.session_state:
+                st.session_state.global_chart_period = "1mo"
+            _default_idx = _periods.index(st.session_state.global_chart_period) if st.session_state.global_chart_period in _periods else 1
+            
+            def _on_wl_period_change():
+                val = st.session_state.get("wl_period_sel")
+                if val:
+                    st.session_state.global_chart_period = val
+
+            wl_period = st.selectbox("차트 기간", _periods, index=_default_idx, key="wl_period_sel", on_change=_on_wl_period_change)
             for sym in st.session_state.watchlist:
                 d = fetch_stock_data(sym, period="1y")  # 1y 1회 조회 → 로컬 슬라이스
                 if d.get("ok") and d.get("history"):

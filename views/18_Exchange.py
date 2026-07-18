@@ -38,13 +38,20 @@ with col_t:
 # 탭 구성: 환율 | 유가 | 전문가 분석
 # ═══════════════════════════════════════════════════════════════════════════
 # fragment: 차트 기간 변경 시 해당 구간만 재실행 — 페이지 전체 rerun 딜레이 제거
-# [주석] st.fragment Rerun 시 selectbox 상태 유실(디폴트 회귀) 버그를 예방하기 위해 fragment를 걷어냅니다.
+# [주석] st.fragment 오동작으로 인한 selectbox 리셋 버그 예방을 위해 fragment를 걷어냅니다.
 # @st.fragment
 def _fx_trend_section():
-    st.markdown("### 📈 환율 추세")
-    fx_period = st.selectbox(
-        "차트 기간", ["5d", "1mo", "3mo", "6mo", "1y"], index=1, key="fx_trend_period"
-    )
+    _periods = ["5d", "1mo", "3mo", "6mo", "1y"]
+    if "global_chart_period" not in st.session_state:
+        st.session_state.global_chart_period = "1mo"
+    _default_idx = _periods.index(st.session_state.global_chart_period) if st.session_state.global_chart_period in _periods else 1
+    
+    def _on_fx_period_change():
+        val = st.session_state.get("fx_trend_period_sel")
+        if val:
+            st.session_state.global_chart_period = val
+
+    fx_period = st.selectbox("차트 기간", _periods, index=_default_idx, key="fx_trend_period_sel", on_change=_on_fx_period_change)
     # 1년치 1회 조회(1시간 캐시) → 기간 전환은 로컬 슬라이스로 즉시 반응
     fx_hist = fetch_fx_history(("KRW", "EUR", "JPY", "CNY"), period="1y")
     if fx_hist.get("ok"):
@@ -101,13 +108,20 @@ def _fx_trend_section():
         st.warning("환율 추세 데이터를 가져오지 못했습니다. (Frankfurter/ECB)")
 
 
-# [주석] st.fragment Rerun 시 selectbox 상태 유실(디폴트 회귀) 버그를 예방하기 위해 fragment를 걷어냅니다.
+# [주석] st.fragment 오동작으로 인한 selectbox 리셋 버그 예방을 위해 fragment를 걷어냅니다.
 # @st.fragment
 def _oil_trend_section():
-    st.markdown("### 📈 유가 추세")
-    oil_period = st.selectbox(
-        "차트 기간", ["5d", "1mo", "3mo", "6mo", "1y"], index=1, key="oil_trend_period"
-    )
+    _periods = ["5d", "1mo", "3mo", "6mo", "1y"]
+    if "global_chart_period" not in st.session_state:
+        st.session_state.global_chart_period = "1mo"
+    _default_idx = _periods.index(st.session_state.global_chart_period) if st.session_state.global_chart_period in _periods else 1
+    
+    def _on_oil_period_change():
+        val = st.session_state.get("oil_trend_period_sel")
+        if val:
+            st.session_state.global_chart_period = val
+
+    oil_period = st.selectbox("차트 기간", _periods, index=_default_idx, key="oil_trend_period_sel", on_change=_on_oil_period_change)
     oil_trend_tabs = st.tabs([name for _sym, (name, _icon) in OIL_INDICES.items()])
     _oil_cmp = {}
     for _tab, (symbol, (name, icon)) in zip(oil_trend_tabs, OIL_INDICES.items()):
