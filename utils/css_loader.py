@@ -89,12 +89,12 @@ def apply_custom_css():
         background: var(--panel-solid);
         border-right: 1px solid var(--line);
     }
-    /* 사이드바 내비 — 그룹 헤더(작은 악센트 라벨 + 구분선) vs 항목(들여쓰기) 위계 분리 */
+    /* 사이드바 내비 — 그룹 헤더(항목보다 크고 굵게 + 구분선) vs 항목(들여쓰기·감광) 위계 분리 */
     [data-testid="stNavSectionHeader"] {
-        color: var(--accent) !important;
-        font-size: 0.72rem !important;
-        font-weight: 700 !important;
-        letter-spacing: 0.07em;
+        color: var(--ink) !important;
+        font-size: 1rem !important;
+        font-weight: 800 !important;
+        letter-spacing: 0.01em;
         margin-top: 14px;
         padding-top: 12px;
         border-top: 1px solid var(--line);
