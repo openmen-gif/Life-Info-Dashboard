@@ -102,6 +102,22 @@ def _render_news_trends(news_list: list[dict], title: str):
         st.caption(f"📰 주요 출처: {src_text}")
 
 
+def published_ts(v: dict) -> float:
+    """published 문자열(ISO·RFC822 등 소스별 혼재)을 타임스탬프로 변환 — 정렬용.
+
+    문자열 그대로 정렬하면 RSS 포맷("Sat, 18 Jul ...")이 요일 알파벳순으로 섞여
+    '정렬 안 됨'으로 보이는 버그가 생긴다. 반드시 이 함수를 정렬 키로 쓸 것."""
+    s = str(v.get("published", "") or "").strip()
+    if not s:
+        return 0.0
+    try:
+        from dateutil import parser as _dp
+        dt = _dp.parse(s)
+        return dt.timestamp() if dt.tzinfo is None else dt.astimezone().timestamp()
+    except (ValueError, OverflowError, TypeError):
+        return 0.0
+
+
 def _parse_view_count(vc) -> int:
     """Parse view count string to int for sorting."""
     if not vc:
@@ -213,6 +229,16 @@ def render_youtube_section(query: str, limit: int = 12, per_page: int = 4,
         per_page: videos per page
         sort: default sort — "views" (조회수순) or "latest" (최신순)
     """
+    # 지연 로드 게이트 — 유튜브 수집(수 초)은 페이지 첫 로딩의 최대 지연 요인이라
+    # 버튼 클릭 시에만 수집한다 (세션 내 유지, D단계 최적화)
+    _yt_gate = f"yt_loaded_{_qkey(query)}"
+    if not st.session_state.get(_yt_gate):
+        st.caption("페이지를 빠르게 열기 위해 영상 목록은 버튼을 누를 때 불러옵니다.")
+        if st.button("관련 영상 불러오기", key=f"{_yt_gate}_btn", use_container_width=True):
+            st.session_state[_yt_gate] = True
+            st.rerun()
+        return []
+
     _tl = "d" if sort == "latest" else None
     videos = fetch_youtube_search(query, limit=limit, timelimit=_tl)
     if not videos:
@@ -229,9 +255,13 @@ def render_youtube_section(query: str, limit: int = 12, per_page: int = 4,
         active_sort = "latest" if use_latest else "views"
 
     if active_sort == "latest":
-        videos_sorted = sorted(videos, key=lambda v: v.get("published", ""), reverse=True)
+        videos_sorted = sorted(videos, key=published_ts, reverse=True)
     else:
-        videos_sorted = sorted(videos, key=lambda v: _parse_view_count(v.get("view_count")), reverse=True)
+        videos_sorted = sorted(
+            videos,
+            key=lambda v: (_parse_view_count(v.get("view_count")), published_ts(v)),
+            reverse=True,
+        )
 
     # Summary metrics
     total = len(videos_sorted)
@@ -441,23 +471,29 @@ def render_expert_page(
                     st.caption("👆 위 버튼을 눌러 이 카테고리 뉴스를 불러오세요.")
         st.divider()
 
-    # ── 자동 뉴스 로딩 + 경향 분석 ──────────────────────────────────────
+    # ── 최신 뉴스 + 경향 분석 — 지연 로드(버튼) 게이트 (D단계 최적화) ──
     if auto_news_query:
         st.markdown(f"## 📰 {title} 최신 뉴스")
         st.caption(f"검색어: `{auto_news_query}`")
-        auto_news = fetch_news_search(auto_news_query, limit=8, timelimit=_news_timelimit)
-        if auto_news:
-            with st.container(border=True):
-                for n in auto_news[:5]:
-                    st.markdown(
-                        f"📰 **[{n['title']}]({n['link']})**  \n"
-                        f"  <small style='color:var(--muted)'>{n.get('source', '')} · {n.get('published', '')}</small>",
-                        unsafe_allow_html=True,
-                    )
-            # 뉴스 경향 분석
-            _render_news_trends(auto_news, title)
+        _news_gate = f"auto_news_loaded_{_qkey(auto_news_query)}"
+        if not st.session_state.get(_news_gate):
+            if st.button("최신 뉴스 불러오기", key=f"{_news_gate}_btn", use_container_width=True):
+                st.session_state[_news_gate] = True
+                st.rerun()
         else:
-            _show_empty_state(f"{title} 관련 뉴스를 가져오지 못했습니다.")
+            auto_news = fetch_news_search(auto_news_query, limit=8, timelimit=_news_timelimit)
+            if auto_news:
+                with st.container(border=True):
+                    for n in auto_news[:5]:
+                        st.markdown(
+                            f"📰 **[{n['title']}]({n['link']})**  \n"
+                            f"  <small style='color:var(--muted)'>{n.get('source', '')} · {n.get('published', '')}</small>",
+                            unsafe_allow_html=True,
+                        )
+                # 뉴스 경향 분석
+                _render_news_trends(auto_news, title)
+            else:
+                _show_empty_state(f"{title} 관련 뉴스를 가져오지 못했습니다.")
         st.divider()
 
     # ── 전문가 검색 & 분석 ────────────────────────────────────────────────
@@ -550,7 +586,7 @@ def render_expert_page(
         st.markdown(f"### 🎬 관련 영상")
         if data.get("youtube"):
             if youtube_sort == "latest":
-                videos = sorted(data["youtube"], key=lambda v: v.get("published", ""), reverse=True)
+                videos = sorted(data["youtube"], key=published_ts, reverse=True)
             else:
                 videos = sorted(data["youtube"], key=lambda v: _parse_view_count(v.get("view_count")), reverse=True)
             _render_paginated_videos(videos, f"yt_ep_{title}")
