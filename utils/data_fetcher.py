@@ -431,12 +431,8 @@ CITY_COORDS = {
 }
 
 
-def _fetch_weather_open_meteo(city: str) -> Optional[dict]:
-    """Fetch real-time weather from Open-Meteo (free, no API key).
-
-    Retries once on transient network errors and converts wind speed
-    from km/h (Open-Meteo default) to m/s for UI consistency.
-    """
+def _resolve_city_coords(city: str) -> tuple:
+    """도시명 → (lat, lon). 내장 좌표표 → 영문 지오코딩 → 한글 지오코딩 → 서울 폴백."""
     raw_city = city.strip()
     eng_city = KOR_CITY_MAP.get(raw_city, raw_city)
     coords = CITY_COORDS.get(eng_city)
@@ -466,10 +462,16 @@ def _fetch_weather_open_meteo(city: str) -> Optional[dict]:
             pass
 
     # 3. 그래도 좌표를 못 찾았으면 서울 좌표로 폴백 (마지막 안전망)
-    if not coords:
-        coords = (37.5665, 126.9780)
+    return coords or (37.5665, 126.9780)
 
-    lat, lon = coords
+
+def _fetch_weather_open_meteo(city: str) -> Optional[dict]:
+    """Fetch real-time weather from Open-Meteo (free, no API key).
+
+    Retries once on transient network errors and converts wind speed
+    from km/h (Open-Meteo default) to m/s for UI consistency.
+    """
+    lat, lon = _resolve_city_coords(city)
     url = (
         f"https://api.open-meteo.com/v1/forecast?"
         f"latitude={lat}&longitude={lon}"
@@ -504,6 +506,65 @@ def _fetch_weather_open_meteo(city: str) -> Optional[dict]:
         except Exception:
             continue
     return None
+
+
+@st.cache_data(ttl=1800, show_spinner=False)
+def fetch_weather_series(city: str = "Seoul") -> dict:
+    """Open-Meteo 한 번 호출로 기온 추이(지난 7일) + 예보(7일) 시계열 조회.
+
+    Returns:
+      {"ok": bool,
+       "daily": [{"Date","tmax","tmin","pop"}...],   # pop=강수확률(%) — 예보 구간만 값 존재
+       "hourly": [{"Time","temp"}...],               # 1시간 간격, 과거 2일~예보 2일
+       "today": "YYYY-MM-DD", "now": "YYYY-MM-DDTHH:00"}
+    """
+    lat, lon = _resolve_city_coords(city)
+    url = (
+        f"https://api.open-meteo.com/v1/forecast?"
+        f"latitude={lat}&longitude={lon}"
+        f"&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max"
+        f"&hourly=temperature_2m"
+        f"&past_days=7&forecast_days=8&timezone=auto"
+    )
+    _UA = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+           "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"}
+    for _ in range(3):
+        try:
+            r = requests.get(url, timeout=15, headers=_UA)
+            r.raise_for_status()
+            d = r.json()
+            dly = d.get("daily", {})
+            dates = dly.get("time", [])
+            if not dates:
+                continue
+            daily = []
+            for i, ds in enumerate(dates):
+                try:
+                    daily.append({
+                        "Date": ds,
+                        "tmax": round(float(dly["temperature_2m_max"][i]), 1),
+                        "tmin": round(float(dly["temperature_2m_min"][i]), 1),
+                        "pop": dly.get("precipitation_probability_max", [None] * len(dates))[i],
+                    })
+                except (TypeError, ValueError, IndexError, KeyError):
+                    continue
+            hly = d.get("hourly", {})
+            now = datetime.datetime.now()
+            today_str = now.strftime("%Y-%m-%d")
+            now_hour = now.strftime("%Y-%m-%dT%H:00")
+            hourly = []
+            lo = (now - datetime.timedelta(days=2)).strftime("%Y-%m-%dT%H:00")
+            hi = (now + datetime.timedelta(days=2)).strftime("%Y-%m-%dT%H:00")
+            for t, v in zip(hly.get("time", []), hly.get("temperature_2m", [])):
+                if v is None or not (lo <= t <= hi):
+                    continue
+                hourly.append({"Time": t, "temp": round(float(v), 1)})
+            if daily:
+                return {"ok": True, "daily": daily, "hourly": hourly,
+                        "today": today_str, "now": now_hour}
+        except Exception:
+            continue
+    return {"ok": False, "daily": [], "hourly": [], "today": "", "now": ""}
 
 
 def _fetch_weather_wttr(city: str) -> Optional[dict]:

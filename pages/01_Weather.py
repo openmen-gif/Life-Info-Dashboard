@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
 import streamlit as st
 from utils.css_loader import apply_custom_css
-from utils.data_fetcher import fetch_weather
+from utils.charts import render_temp_daily, render_temp_hourly
+from utils.data_fetcher import fetch_weather, fetch_weather_series
 from utils.report_downloader import render_download_buttons
 import streamlit.components.v1 as components
 
@@ -57,6 +58,18 @@ if weather.get("_sample"):
         "인터넷 연결을 확인하거나, **[날씨 조회 및 갱신]** 버튼을 다시 눌러주세요. "
         "정밀 데이터가 필요하면 [무료 OpenWeatherMap API 키](https://openweathermap.org/api)를 발급받아 입력하세요."
     )
+
+# ── 기온 추이 + 예보 그래프 ──────────────────────────────────────────────
+st.markdown("---")
+_series = fetch_weather_series(city_input)
+if _series.get("ok"):
+    st.markdown("### 기온 추이 — 지난 7일 · 예보 7일")
+    render_temp_daily(_series["daily"], _series["today"])
+
+    st.markdown("### 시간대별 기온 — 어제부터 내일모레까지")
+    render_temp_hourly(_series["hourly"], _series["now"])
+else:
+    st.info("기온 추이·예보 데이터를 가져오지 못했습니다. 잠시 후 새로고침해 주세요.")
 
 st.markdown("---")
 

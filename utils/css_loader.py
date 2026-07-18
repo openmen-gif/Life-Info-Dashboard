@@ -89,6 +89,27 @@ def apply_custom_css():
         background: var(--panel-solid);
         border-right: 1px solid var(--line);
     }
+    /* 사이드바 내비 — 그룹 헤더(작은 악센트 라벨 + 구분선) vs 항목(들여쓰기) 위계 분리 */
+    [data-testid="stNavSectionHeader"] {
+        color: var(--accent) !important;
+        font-size: 0.72rem !important;
+        font-weight: 700 !important;
+        letter-spacing: 0.07em;
+        margin-top: 14px;
+        padding-top: 12px;
+        border-top: 1px solid var(--line);
+    }
+    [data-testid="stSidebarNavItems"] > header:first-child {
+        border-top: 0;
+        margin-top: 0;
+        padding-top: 0;
+    }
+    [data-testid="stSidebarNavLink"] {
+        margin-left: 10px;
+    }
+    [data-testid="stSidebarNavLink"] span {
+        color: var(--ink-2);
+    }
 
     /* 탭 */
     .stTabs [data-baseweb="tab-list"] button { color: var(--muted); }

@@ -11,8 +11,11 @@ import plotly.graph_objects as go
 import streamlit as st
 
 ACCENT = "#7C9CFF"                      # --accent
+UP = "#FF6B6B"                          # --up (상승/최고)
+DOWN = "#4D96FF"                        # --down (하락/최저)
 GRID = "rgba(255,255,255,0.08)"
 GRID_SOFT = "rgba(255,255,255,0.04)"
+_REF_LINE = "rgba(255,255,255,0.35)"
 
 
 def nice_dtick(vmin: float, vmax: float) -> float:
@@ -77,6 +80,101 @@ def render_line_tight(history: list, decimals: int = 2, height: int = 300,
     st.line_chart 대체용 — 모든 지표 추이 차트의 표준."""
     render_trend_with_stats(history, unit="", decimals=decimals, dtick=dtick,
                             height=height, show_stats=False)
+
+
+def render_temp_daily(daily: list, today: str, height: int = 340) -> None:
+    """일별 최고·최저 기온 — 과거(실선) + 예보(점선), '오늘' 세로 기준선.
+
+    daily=[{"Date","tmax","tmin","pop"}...], today="YYYY-MM-DD"."""
+    if not daily:
+        st.warning("기온 추이 데이터를 가져오지 못했습니다.")
+        return
+    past = [r for r in daily if r["Date"] <= today]
+    future = [r for r in daily if r["Date"] >= today]  # 오늘 포함 — 선이 끊기지 않게
+
+    fig = go.Figure()
+
+    def _add(rows, key, color, name, dash=None):
+        if len(rows) >= 2:
+            fig.add_trace(go.Scatter(
+                x=[r["Date"] for r in rows], y=[r[key] for r in rows],
+                mode="lines", name=name,
+                line=dict(color=color, width=2, dash=dash),
+                hovertemplate="%{x}<br>%{y:.1f}°C<extra>" + name + "</extra>",
+            ))
+
+    _add(past, "tmax", UP, "최고(관측)")
+    _add(future, "tmax", UP, "최고(예보)", dash="dash")
+    _add(past, "tmin", DOWN, "최저(관측)")
+    _add(future, "tmin", DOWN, "최저(예보)", dash="dash")
+
+    vals = [r["tmax"] for r in daily] + [r["tmin"] for r in daily]
+    pad = max((max(vals) - min(vals)) * 0.1, 0.5)
+    fig.add_vline(x=today, line_dash="dot", line_color=_REF_LINE)
+    fig.add_annotation(x=today, y=1, yref="paper", text="오늘", showarrow=False,
+                       yanchor="bottom", font=dict(size=11))
+    fig.update_layout(
+        height=height, margin=dict(l=0, r=0, t=28, b=0),
+        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+        yaxis=dict(range=[min(vals) - pad, max(vals) + pad],
+                   ticksuffix="°", gridcolor=GRID),
+        xaxis=dict(gridcolor=GRID_SOFT),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, x=0),
+    )
+    st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+    st.caption("실선 = 관측(지난 7일) · 점선 = 예보(7일) · 데이터: Open-Meteo")
+
+
+def render_temp_hourly(hourly: list, now_hour: str, height: int = 280,
+                       compact: bool = False) -> None:
+    """시간대별 기온 — 과거(실선) + 예보(점선), '지금' 세로 기준선.
+
+    hourly=[{"Time","temp"}...], now_hour="YYYY-MM-DDTHH:00".
+    compact=True면 홈 타일용 미니 차트(축·범례·캡션 생략)."""
+    if not hourly:
+        if not compact:
+            st.warning("시간대별 기온 데이터를 가져오지 못했습니다.")
+        return
+    past = [r for r in hourly if r["Time"] <= now_hour]
+    future = [r for r in hourly if r["Time"] >= now_hour]
+
+    fig = go.Figure()
+    if len(past) >= 2:
+        fig.add_trace(go.Scatter(
+            x=[r["Time"] for r in past], y=[r["temp"] for r in past],
+            mode="lines", name="관측", line=dict(color=ACCENT, width=2),
+            hovertemplate="%{x}<br>%{y:.1f}°C<extra>관측</extra>"))
+    if len(future) >= 2:
+        fig.add_trace(go.Scatter(
+            x=[r["Time"] for r in future], y=[r["temp"] for r in future],
+            mode="lines", name="예보", line=dict(color=ACCENT, width=2, dash="dash"),
+            hovertemplate="%{x}<br>%{y:.1f}°C<extra>예보</extra>"))
+    fig.add_vline(x=now_hour, line_dash="dot", line_color=_REF_LINE)
+
+    vals = [r["temp"] for r in hourly]
+    pad = max((max(vals) - min(vals)) * 0.1, 0.5)
+    if compact:
+        fig.update_layout(
+            height=max(70, height if height < 200 else 90),
+            margin=dict(l=0, r=0, t=2, b=0),
+            paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+            xaxis=dict(visible=False), yaxis=dict(visible=False),
+            showlegend=False,
+        )
+    else:
+        fig.add_annotation(x=now_hour, y=1, yref="paper", text="지금", showarrow=False,
+                           yanchor="bottom", font=dict(size=11))
+        fig.update_layout(
+            height=height, margin=dict(l=0, r=0, t=28, b=0),
+            paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+            yaxis=dict(range=[min(vals) - pad, max(vals) + pad],
+                       ticksuffix="°", gridcolor=GRID),
+            xaxis=dict(gridcolor=GRID_SOFT),
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, x=0),
+        )
+    st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+    if not compact:
+        st.caption("실선 = 관측 · 점선 = 예보 · 어제부터 내일모레까지 1시간 간격")
 
 
 def render_normalized_compare(series_map: dict, caption: str, height: int = 340) -> None:

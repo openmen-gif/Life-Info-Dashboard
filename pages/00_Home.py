@@ -2,7 +2,8 @@
 import streamlit as st
 import datetime
 from utils.css_loader import apply_custom_css
-from utils.data_fetcher import fetch_weather, fetch_news, fetch_traffic_status, fetch_stock_data
+from utils.charts import render_temp_hourly
+from utils.data_fetcher import fetch_weather, fetch_news, fetch_traffic_status, fetch_stock_data, fetch_weather_series
 from utils.ui_components import render_weather_card, render_news_summary, render_traffic_summary
 from utils.report_downloader import render_download_buttons
 
@@ -24,6 +25,10 @@ with col1:
     with st.container(border=True):
         weather = fetch_weather()
         render_weather_card(weather)
+        # 24시간 기온 미니 차트 — 실선=관측, 점선=예보
+        _ws = fetch_weather_series("Seoul")
+        if _ws.get("ok"):
+            render_temp_hourly(_ws["hourly"], _ws["now"], compact=True)
         _mark_tile()
 
 with col2:
