@@ -124,7 +124,8 @@ def _render_stock_table(stocks: dict):
         for future in futures:
             sym = futures[future]
             try:
-                results[sym] = future.result()
+                # [주석] 네트워크 지연으로 인한 무한 대기를 막기 위해 3초 타임아웃을 강제합니다.
+                results[sym] = future.result(timeout=3.0)
             except Exception:
                 results[sym] = {"ok": False}
 
@@ -326,7 +327,8 @@ with tab_watchlist:
             for future in wl_futures:
                 sym = wl_futures[future]
                 try:
-                    wl_results[sym] = future.result()
+                    # [주석] 네트워크 지연으로 인한 무한 대기를 막기 위해 3초 타임아웃을 강제합니다.
+                    wl_results[sym] = future.result(timeout=3.0)
                 except Exception:
                     wl_results[sym] = {"ok": False}
                     

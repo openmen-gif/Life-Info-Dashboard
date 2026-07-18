@@ -364,7 +364,8 @@ def render_expert_page(
             for future in futures:
                 sym = futures[future]
                 try:
-                    prefetched_results[sym] = future.result()
+                    # [주석] 야후 파이낸스 지연으로 인한 무한 멈춤을 방지하고자 3초 강제 타임아웃을 주입합니다.
+                    prefetched_results[sym] = future.result(timeout=3.0)
                 except Exception:
                     prefetched_results[sym] = {"ok": False}
         
