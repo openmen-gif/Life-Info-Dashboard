@@ -97,8 +97,15 @@ render_download_buttons()
 st.markdown("---")
 _today_str = datetime.datetime.now().strftime("%Y년 %m월 %d일")
 st.markdown(f"## {_today_str} 생활정보 영상")
-from utils.expert_template import render_youtube_section
-_yt_home = render_youtube_section("오늘 뉴스 시사 경제", sort="latest")
+# 유튜브 수집은 홈 첫 로딩의 최대 지연 요인 — 클릭 시 지연 로드 (세션 내 유지)
+if st.session_state.get("home_yt_loaded"):
+    from utils.expert_template import render_youtube_section
+    render_youtube_section("오늘 뉴스 시사 경제", sort="latest")
+else:
+    st.caption("홈을 빠르게 열기 위해 영상 목록은 버튼을 누를 때 불러옵니다.")
+    if st.button("생활정보 영상 불러오기", use_container_width=True):
+        st.session_state["home_yt_loaded"] = True
+        st.rerun()
 
 st.markdown("---")
 st.markdown("## 전체 카테고리 (38개 페이지)")
