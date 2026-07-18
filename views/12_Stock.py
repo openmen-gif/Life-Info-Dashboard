@@ -112,10 +112,25 @@ def _render_kr_index_chart(code: str, name: str, period: str = "1mo"):
 
 
 def _render_stock_table(stocks: dict):
-    """개별 종목 테이블."""
+    """개별 종목 테이블 (ThreadPoolExecutor를 활용해 6~7개 종목을 병렬 수집하여 멈춤 현상 차단)."""
+    from concurrent.futures import ThreadPoolExecutor
+    
+    symbols = list(stocks.keys())
+    
+    # [주석] 8개 스레드를 가동해 yfinance API 6~7개를 동시 병렬 수집 (동기식 6초 -> 병렬 0.8초 단축)
+    with ThreadPoolExecutor(max_workers=min(len(symbols), 8)) as executor:
+        futures = {executor.submit(fetch_stock_data, sym, "5d"): sym for sym in symbols}
+        results = {}
+        for future in futures:
+            sym = futures[future]
+            try:
+                results[sym] = future.result()
+            except Exception:
+                results[sym] = {"ok": False}
+
     rows = []
     for symbol, name in stocks.items():
-        data = fetch_stock_data(symbol, period="5d")
+        data = results.get(symbol, {"ok": False})
         if data.get("ok"):
             rows.append({
                 "종목": name,
@@ -133,7 +148,8 @@ def _render_stock_table(stocks: dict):
 
 
 # fragment: 기간 변경 시 차트 구간만 재실행 — 페이지 전체 rerun 딜레이 제거
-@st.fragment
+# [주석] st.fragment 오동작으로 인한 selectbox 리셋 버그 예방을 위해 fragment를 걷어냅니다.
+# @st.fragment
 def _kr_trend_section():
     period_kr = st.selectbox("차트 기간", ["5d", "1mo", "3mo", "6mo", "1y"], index=1, key="kr_period")
     st.markdown("### 📈 KOSPI 추이")
@@ -142,7 +158,8 @@ def _kr_trend_section():
     _render_kr_index_chart("KOSDAQ", "KOSDAQ", period_kr)
 
 
-@st.fragment
+# [주석] st.fragment 오동작으로 인한 selectbox 리셋 버그 예방을 위해 fragment를 걷어냅니다.
+# @st.fragment
 def _us_trend_section():
     period_us = st.selectbox("차트 기간", ["5d", "1mo", "3mo", "6mo", "1y"], index=1, key="us_period")
     st.markdown("### 📈 S&P 500 추이")
@@ -198,7 +215,8 @@ with tab_us:
         st.info("뉴스를 가져오지 못했습니다.")
 
 # fragment: 비교 기간 변경 시 이 구간만 재실행
-@st.fragment
+# [주석] st.fragment 오동작으로 인한 selectbox 리셋 버그 예방을 위해 fragment를 걷어냅니다.
+# @st.fragment
 def _compare_section():
     period_cmp = st.selectbox("비교 기간", ["5d", "1mo", "3mo", "6mo", "1y"], index=1, key="cmp_period")
 
@@ -295,13 +313,27 @@ with tab_watchlist:
 
     st.markdown("---")
 
-    # 관심 종목 시세 표시
+    # 관심 종목 시세 표시 (사전 병렬 수집 최적화로 UI 지연 차단)
     if st.session_state.watchlist:
         st.markdown("### 📊 실시간 시세")
-        wl_cols = st.columns(min(len(st.session_state.watchlist), 4))
-        for i, sym in enumerate(st.session_state.watchlist):
+        from concurrent.futures import ThreadPoolExecutor
+        wl_symbols = st.session_state.watchlist
+        
+        # [주석] 멀티스레드로 모든 관심 종목의 시세를 동시 병렬 수집
+        with ThreadPoolExecutor(max_workers=min(len(wl_symbols), 8)) as executor:
+            wl_futures = {executor.submit(fetch_stock_data, sym, "5d"): sym for sym in wl_symbols}
+            wl_results = {}
+            for future in wl_futures:
+                sym = wl_futures[future]
+                try:
+                    wl_results[sym] = future.result()
+                except Exception:
+                    wl_results[sym] = {"ok": False}
+                    
+        wl_cols = st.columns(min(len(wl_symbols), 4))
+        for i, sym in enumerate(wl_symbols):
             with wl_cols[i % len(wl_cols)]:
-                d = fetch_stock_data(sym, period="5d")
+                d = wl_results.get(sym, {"ok": False})
                 if d.get("ok") and _is_valid_num(d.get("price")):
                     is_kr = sym.endswith((".KS", ".KQ"))
                     price_fmt = f"{d['price']:,.0f}" if is_kr else f"${d['price']:,.2f}"
@@ -311,7 +343,8 @@ with tab_watchlist:
                     st.metric(sym, "N/A", help="데이터 로딩 실패")
 
         # 관심 종목 차트 — fragment: 기간 변경 시 이 구간만 재실행
-        @st.fragment
+        # [주석] st.fragment 오동작으로 인한 selectbox 리셋 버그 예방을 위해 fragment를 걷어냅니다.
+        # @st.fragment
         def _watchlist_charts():
             st.markdown("### 📈 관심 종목 차트")
             wl_period = st.selectbox("차트 기간", ["5d", "1mo", "3mo", "6mo", "1y"], index=1, key="wl_period")

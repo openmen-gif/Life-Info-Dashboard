@@ -3,7 +3,7 @@ import datetime
 import re
 from collections import Counter
 import pandas as pd
-from utils.charts import render_line_tight
+from utils.charts import render_line_tight, slice_history
 from utils.data_fetcher import fetch_web_search, fetch_news_search, fetch_youtube_search
 from utils.report_downloader import render_download_buttons
 
@@ -348,17 +348,27 @@ def render_expert_page(
                 else:
                     st.metric(name, "N/A")
 
-        # 첫 번째 ticker 차트
-        first_sym = ticker_items[0][0]
-        d = fetch_stock_data(first_sym, period="1mo")
-        if d.get("ok") and d.get("history"):
-            render_line_tight(d["history"])
-            prices = [r["Close"] for r in d["history"]]
-            if prices:
-                sc1, sc2, sc3 = st.columns(3)
-                sc1.metric("최고", f"{max(prices):,.2f}")
-                sc2.metric("최저", f"{min(prices):,.2f}")
-                sc3.metric("평균", f"{sum(prices)/len(prices):,.2f}")
+        # 모든 ticker 차트 (st.tabs 형태로 모든 티커 지표 차트들을 기간 선택 selectbox 연동형으로 전면 배포)
+        st.markdown(f"#### 📈 {title} 지표 추이 분석")
+        chart_period = st.selectbox(
+            "차트 기간", ["5d", "1mo", "3mo", "6mo", "1y"], index=1, key=f"chart_period_{title}"
+        )
+        
+        ticker_tabs = st.tabs([name for _sym, name in ticker_items])
+        for _tab, (symbol, name) in zip(ticker_tabs, ticker_items):
+            with _tab:
+                st.markdown(f"##### 📈 {name} ({symbol}) 추이")
+                # 1년치 캐싱 수집 후 로컬 슬라이싱 필터로 Rerun 시 즉각 반응
+                d = fetch_stock_data(symbol, period="1y")
+                if d.get("ok") and d.get("history"):
+                    _hist = slice_history(d["history"], chart_period)
+                    render_line_tight(_hist)
+                    prices = [r["Close"] for r in _hist]
+                    if prices:
+                        sc1, sc2, sc3 = st.columns(3)
+                        sc1.metric("최고", f"{max(prices):,.2f}")
+                        sc2.metric("최저", f"{min(prices):,.2f}")
+                        sc3.metric("평균", f"{sum(prices)/len(prices):,.2f}")
         st.markdown("---")
 
     # ── 카테고리별 뉴스 탭 (sub_topics) ──────────────────────────────────

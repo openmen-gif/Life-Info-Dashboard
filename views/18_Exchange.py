@@ -38,7 +38,8 @@ with col_t:
 # 탭 구성: 환율 | 유가 | 전문가 분석
 # ═══════════════════════════════════════════════════════════════════════════
 # fragment: 차트 기간 변경 시 해당 구간만 재실행 — 페이지 전체 rerun 딜레이 제거
-@st.fragment
+# [주석] st.fragment Rerun 시 selectbox 상태 유실(디폴트 회귀) 버그를 예방하기 위해 fragment를 걷어냅니다.
+# @st.fragment
 def _fx_trend_section():
     st.markdown("### 📈 환율 추세")
     fx_period = st.selectbox(
@@ -47,35 +48,61 @@ def _fx_trend_section():
     # 1년치 1회 조회(1시간 캐시) → 기간 전환은 로컬 슬라이스로 즉시 반응
     fx_hist = fetch_fx_history(("KRW", "EUR", "JPY", "CNY"), period="1y")
     if fx_hist.get("ok"):
-        # (코드, 라벨, 단위, 소수, Y축 눈금) — KRW는 10원 간격 고정, 나머지 자동(1-2-5 계열)
+        # [주석] 한국인 정서에 맞추어 달러(USD) 기준 타국 통화 비율을 "원화(KRW) 환산 환율"로 가공합니다.
+        krw_history = fx_hist["history"].get("KRW", [])
+        krw_map = {r["Date"]: r["Close"] for r in krw_history}
+        
+        converted_history = {"KRW": krw_history}
+        
+        # EUR, JPY, CNY 통화들을 원화 환산 가격으로 정밀 가공
+        for code in ["EUR", "JPY", "CNY"]:
+            target_history = fx_hist["history"].get(code, [])
+            conv_list = []
+            for r in target_history:
+                d = r["Date"]
+                if d in krw_map:
+                    usd_to_krw = krw_map[d]
+                    usd_to_target = r["Close"]
+                    if usd_to_target > 0:
+                        if code == "JPY":
+                            # 엔화는 관례적으로 100엔당 원화 가격으로 환산 표기
+                            converted_val = (usd_to_krw / usd_to_target) * 100
+                        else:
+                            converted_val = usd_to_krw / usd_to_target
+                        conv_list.append({"Date": d, "Close": round(converted_val, 2)})
+            converted_history[f"{code}_KRW"] = conv_list
+
+        # (코드명, 탭 라벨, 단위 기호, 소수 자릿수, Y축 수동 눈금)
         _FX_TREND = [
-            ("KRW", "USD→KRW", "₩", 2, 10),
-            ("EUR", "USD→EUR", "€", 4, None),
-            ("JPY", "USD→JPY", "¥", 2, None),
-            ("CNY", "USD→CNY", "¥", 4, None),
+            ("KRW", "달러 (USD→KRW)", "₩", 2, 10),
+            ("EUR_KRW", "유로 (EUR→KRW)", "₩", 2, None),
+            ("JPY_KRW", "엔화 (100 JPY→KRW)", "₩", 2, None),
+            ("CNY_KRW", "위안화 (CNY→KRW)", "₩", 2, None),
         ]
+        
         fx_trend_tabs = st.tabs([label for _c, label, _u, _d, _t in _FX_TREND])
         for _tab, (code, label, unit, dec, tick) in zip(fx_trend_tabs, _FX_TREND):
             with _tab:
                 st.markdown(f"#### 📈 {label} 추이")
                 _render_trend_with_stats(
-                    _slice_history(fx_hist["history"].get(code, []), fx_period),
+                    _slice_history(converted_history.get(code, []), fx_period),
                     unit=unit, decimals=dec, dtick=tick
                 )
-        st.caption("※ ECB 기준 환율(Frankfurter), 영업일 1회 갱신 · 실시간 값은 상단 카드 참조")
+        st.caption("※ ECB 기준 환율(Frankfurter)을 원화(KRW)로 환산 계산, 영업일 1회 갱신 · 실시간 값은 상단 카드 참조")
 
-        # ── 통화 비교 — 상대 변화율 (주식 '국장 vs 미장'과 동일 방식) ──
+        # ── 통화 비교 — 상대 변화율 (원화 환산 환율 기준 정량 비교) ──
         st.markdown("### 📊 통화 비교 — 상대 변화율")
-        _fx_cmp = {label: _slice_history(fx_hist["history"].get(code, []), fx_period)
+        _fx_cmp = {label: _slice_history(converted_history.get(code, []), fx_period)
                    for code, label, _u, _d, _t in _FX_TREND}
         _render_normalized_compare(
-            _fx_cmp, "※ 시작일 = 100 기준 정규화 비교 · 기간은 상단 '차트 기간' 선택을 따릅니다"
+            _fx_cmp, "※ 시작일 = 100 기준 정규화 비교 (원화 환산 기준) · 기간은 상단 '차트 기간' 선택을 따릅니다"
         )
     else:
         st.warning("환율 추세 데이터를 가져오지 못했습니다. (Frankfurter/ECB)")
 
 
-@st.fragment
+# [주석] st.fragment Rerun 시 selectbox 상태 유실(디폴트 회귀) 버그를 예방하기 위해 fragment를 걷어냅니다.
+# @st.fragment
 def _oil_trend_section():
     st.markdown("### 📈 유가 추세")
     oil_period = st.selectbox(
