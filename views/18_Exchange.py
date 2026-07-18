@@ -55,7 +55,7 @@ def _fx_trend_section():
     fx_period = st.selectbox("차트 기간", _periods, index=_default_idx, key="fx_trend_period_sel", on_change=_on_fx_period_change)
     # 1년치 1회 조회(1시간 캐시) → 기간 전환은 로컬 슬라이스로 즉시 반응
     fx_hist = fetch_fx_history(("KRW", "EUR", "JPY", "CNY"), period="1y")
-    if fx_hist.get("ok"):
+    if fx_hist and fx_hist.get("ok"):
         # [주석] 한국인 정서에 맞추어 달러(USD) 기준 타국 통화 비율을 "원화(KRW) 환산 환율"로 가공합니다.
         krw_history = fx_hist["history"].get("KRW", [])
         krw_map = {r["Date"]: r["Close"] for r in krw_history}
@@ -145,7 +145,7 @@ def _oil_trend_section():
         with _tab:
             st.markdown(f"#### {icon} {name} 추이")
             d = prefetched_oil.get(symbol, {"ok": False})
-            _hist = _slice_history(d.get("history", []) if d.get("ok") else [], oil_period)
+            _hist = _slice_history(d.get("history", []) if d and d.get("ok") else [], oil_period)
             _oil_cmp[name] = _hist
             _render_trend_with_stats(_hist, unit="$", decimals=2)
 
@@ -234,7 +234,7 @@ with tab_oil:
     for col, (symbol, (name, icon)) in zip(oil_cols, OIL_INDICES.items()):
         with col:
             data = _oil_data[symbol]
-            if data.get("ok"):
+            if data and data.get("ok"):
                 delta_str = f"{data['change']:+.2f} ({data['change_pct']:+.2f}%)"
                 col.metric(f"{icon} {name}", f"${data['price']:,.2f}", delta=delta_str)
             else:

@@ -1231,7 +1231,7 @@ def fetch_kr_index(code: str = "KOSPI", period: str = "1mo") -> dict:
         _yf_code = {"KOSPI": "^KS11", "KOSDAQ": "^KQ11"}.get(code)
         if _yf_code:
             fb = fetch_stock_data(_yf_code, period=period)
-            if fb.get("ok"):
+            if fb and fb.get("ok"):
                 return {**fb, "name": code, "symbol": code}
         return {"symbol": code, "ok": False}
 

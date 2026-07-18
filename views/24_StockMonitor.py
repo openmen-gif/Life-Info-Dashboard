@@ -106,7 +106,7 @@ def _render_index_row(indices: dict, flag: str):
     for col, (symbol, name) in zip(cols, indices.items()):
         d = _idx_data_5d.get(symbol, {})
         with col:
-            if d.get("ok") and _is_valid_num(d.get("price")):
+            if d and d.get("ok") and _is_valid_num(d.get("price")):
                 delta_str = f"{d['change']:+,.2f} ({d['change_pct']:+.2f}%)"
                 st.metric(f"{flag} {name}", f"{d['price']:,.2f}", delta=delta_str)
             else:
@@ -116,7 +116,7 @@ def _render_index_row(indices: dict, flag: str):
 def _render_chart_with_stats(symbol: str, name: str, period: str):
     """지수/종목 차트 + 통계 요약."""
     d = fetch_stock_data(symbol, period=period)
-    if not d.get("ok") or not d.get("history"):
+    if not d or not d.get("ok") or not d.get("history"):
         st.warning(f"{name} 차트 데이터를 가져오지 못했습니다.")
         return
 
@@ -140,7 +140,7 @@ def _render_stock_table(stocks: dict):
     rows = []
     for symbol, name in stocks.items():
         d = fetch_stock_data(symbol, period="5d")
-        if d.get("ok"):
+        if d and d.get("ok"):
             rows.append({
                 "종목": name,
                 "코드": symbol.replace(".KS", ""),
@@ -203,7 +203,7 @@ with tab_kr:
         with tab:
             st.markdown(f"#### 📈 {name} 추이")
             kr_hist = fetch_kr_index(code, period=kr_period)
-            if kr_hist.get("ok") and kr_hist.get("history"):
+            if kr_hist and kr_hist.get("ok") and kr_hist.get("history"):
                 render_line_tight(kr_hist["history"])
                 prices = [r["Close"] for r in kr_hist["history"]]
                 if prices:
@@ -274,13 +274,13 @@ with tab_compare:
 
         c1, c2 = st.columns(2)
         with c1:
-            if kr_idx.get("ok") and _is_valid_num(kr_idx.get("price")):
+            if kr_idx and kr_idx.get("ok") and _is_valid_num(kr_idx.get("price")):
                 delta = f"{kr_idx['change']:+,.2f} ({kr_idx['change_pct']:+.2f}%)"
                 st.metric(f"🇰🇷 {kr_name}", f"{kr_idx['price']:,.2f}", delta=delta)
             else:
                 st.metric(f"🇰🇷 {kr_name}", "N/A")
         with c2:
-            if us_d.get("ok") and _is_valid_num(us_d.get("price")):
+            if us_d and us_d.get("ok") and _is_valid_num(us_d.get("price")):
                 delta = f"{us_d['change']:+,.2f} ({us_d['change_pct']:+.2f}%)"
                 st.metric(f"🇺🇸 {us_name}", f"{us_d['price']:,.2f}", delta=delta)
             else:

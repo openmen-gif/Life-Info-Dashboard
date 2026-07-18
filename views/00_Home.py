@@ -27,7 +27,7 @@ with col1:
         render_weather_card(weather)
         # 24시간 기온 미니 차트 — 실선=관측, 점선=예보
         _ws = fetch_weather_series("Seoul")
-        if _ws.get("ok"):
+        if _ws and _ws.get("ok"):
             render_temp_hourly(_ws["hourly"], _ws["now"], compact=True)
         _mark_tile()
 

@@ -62,7 +62,7 @@ if weather.get("_sample"):
 # ── 기온 추이 + 예보 그래프 ──────────────────────────────────────────────
 st.markdown("---")
 _series = fetch_weather_series(city_input)
-if _series.get("ok"):
+if _series and _series.get("ok"):
     st.markdown("### 기온 추이 — 지난 7일 · 예보 7일")
     render_temp_daily(_series["daily"], _series["today"])
 

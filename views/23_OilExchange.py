@@ -106,7 +106,7 @@ oil_cols = st.columns(len(OIL_FUTURES))
 for col, (symbol, (name, icon)) in zip(oil_cols, OIL_FUTURES.items()):
     with col:
         d = oil_data[symbol]
-        if d.get("ok"):
+        if d and d.get("ok"):
             delta_str = f"{d['change']:+.2f} ({d['change_pct']:+.2f}%)"
             col.metric(f"{icon} {name}", f"${d['price']:,.2f}", delta=delta_str)
         else:
@@ -119,7 +119,7 @@ oil_tabs = st.tabs(["WTI 원유", "브렌트유", "난방유", "천연가스"])
 for tab, (symbol, (name, icon)) in zip(oil_tabs, OIL_FUTURES.items()):
     with tab:
         d = fetch_stock_data(symbol, period=oil_period)
-        if d.get("ok") and d.get("history"):
+        if d and d.get("ok") and d.get("history"):
             st.markdown(f"#### {icon} {name} 추이")
             render_line_tight(d["history"])
 
@@ -194,12 +194,12 @@ st.markdown("---")
 oil_dl_data = []
 for symbol, (name, icon) in OIL_FUTURES.items():
     d = oil_data[symbol]
-    if d.get("ok"):
+    if d and d.get("ok"):
         oil_dl_data.append({"항목": name, "현재가": d["price"], "전일비": d["change"], "등락률": f"{d['change_pct']}%"})
 
 fx_dl = fetch_exchange_rates()
 fx_rows = []
-if fx_dl.get("ok") and fx_dl.get("rates"):
+if fx_dl and fx_dl.get("ok") and fx_dl.get("rates"):
     for code, label in TARGET_CURRENCIES.items():
         r_val = fx_dl["rates"].get(code)
         if r_val:

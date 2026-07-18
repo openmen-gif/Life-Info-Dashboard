@@ -84,7 +84,7 @@ def _render_index_metrics(indices: dict, use_naver: bool = False):
         data = fetch_kr_index(symbol) if use_naver else fetch_stock_data(symbol, period="5d")
         results[symbol] = data
         with col:
-            if data.get("ok") and _is_valid_num(data.get("price")):
+            if data and data.get("ok") and _is_valid_num(data.get("price")):
                 delta = f"{data['change']:+,.2f} ({data['change_pct']:+.2f}%)"
                 col.metric(f"{flag} {name}", f"{data['price']:,.2f}", delta=delta)
             else:
@@ -96,7 +96,7 @@ def _render_index_chart(symbol: str, name: str, period: str = "1mo"):
     """지수 차트 + 통계 (미국 지수용 — yfinance). Y축 밀착 자동.
     1년치를 1회만 조회(6시간 장기 캐시)하고 기간은 로컬 슬라이스 — 기간 전환 즉시 반응."""
     data = fetch_stock_data_long(symbol, period="1y")
-    if data.get("ok") and data.get("history"):
+    if data and data.get("ok") and data.get("history"):
         render_trend_with_stats(slice_history(data["history"], period), unit="", decimals=2)
     else:
         st.warning(f"{name} 차트 데이터를 가져오지 못했습니다.")
@@ -106,7 +106,7 @@ def _render_kr_index_chart(code: str, name: str, period: str = "1mo"):
     """국내 지수 차트 + 통계 (네이버 금융 API, 장애 시 yfinance 폴백). Y축 밀착 자동.
     1년치 1회 조회 후 로컬 슬라이스."""
     data = fetch_kr_index(code, period="1y")
-    if data.get("ok") and data.get("history"):
+    if data and data.get("ok") and data.get("history"):
         render_trend_with_stats(slice_history(data["history"], period), unit="", decimals=2)
     else:
         st.warning(f"{name} 차트 데이터를 가져오지 못했습니다.")
@@ -133,7 +133,7 @@ def _render_stock_table(stocks: dict):
     rows = []
     for symbol, name in stocks.items():
         data = results.get(symbol, {"ok": False})
-        if data.get("ok"):
+        if data and data.get("ok"):
             rows.append({
                 "종목": name,
                 "코드": symbol,
@@ -264,13 +264,13 @@ def _compare_section():
 
         c1, c2 = st.columns(2)
         with c1:
-            if kr_idx.get("ok") and _is_valid_num(kr_idx.get("price")):
+            if kr_idx and kr_idx.get("ok") and _is_valid_num(kr_idx.get("price")):
                 delta = f"{kr_idx['change']:+,.2f} ({kr_idx['change_pct']:+.2f}%)"
                 st.metric(f"🇰🇷 {kr_name}", f"{kr_idx['price']:,.2f}", delta=delta)
             else:
                 st.metric(f"🇰🇷 {kr_name}", "N/A")
         with c2:
-            if us_d.get("ok") and _is_valid_num(us_d.get("price")):
+            if us_d and us_d.get("ok") and _is_valid_num(us_d.get("price")):
                 delta = f"{us_d['change']:+,.2f} ({us_d['change_pct']:+.2f}%)"
                 st.metric(f"🇺🇸 {us_name}", f"{us_d['price']:,.2f}", delta=delta)
             else:
