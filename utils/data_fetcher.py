@@ -1,5 +1,10 @@
 """Data fetchers for weather, news, and traffic information.
 Supports dual-mode: API (FastAPI backend) and Standalone (Local fetching)."""
+import socket
+# [주석] feedparser, urllib 등 내부 타임아웃 제어가 불가능한 라이브러리의 무한 락을 예방하고자 
+#        모든 소켓 네트워크 연결에 3초 타임아웃을 전역 강제합니다.
+socket.setdefaulttimeout(3.0)
+
 import requests
 import datetime
 import feedparser
