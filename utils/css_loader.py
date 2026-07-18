@@ -1,26 +1,113 @@
-"""Custom CSS loader for Streamlit — desktop + mobile responsive."""
+"""Custom CSS loader for Streamlit — 벤토 다크 글래스 토큰 시스템 + 데스크톱/모바일 반응형."""
 import streamlit as st
 
 
 def apply_custom_css():
     st.markdown("""
     <style>
-    /* ── Base (Desktop) ──────────────────────────────────── */
-    .block-container { padding-top: 1rem; }
-    .stMetric { background: #1a1a2e; border-radius: 10px; padding: 15px; }
-    .stMetric label { color: #8892b0; }
-    h1 { color: #64ffda; }
-    h2 { color: #8892b0; }
-    h3 { color: #ccd6f6; }
-    .info-card {
-        background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
-        border-radius: 12px; padding: 20px; margin: 10px 0;
-        border-left: 4px solid #4CAF50;
+    /* Hallmark · macrostructure: Bento Grid · theme: custom(벤토 다크 글래스) · tone: utilitarian
+     * paper: #0A0D14 · accent: #7C9CFF · 2026 트렌드 A안 승인(2026-07-18)
+     * 색·라운드는 반드시 아래 토큰만 참조 — 인라인 hex 추가 금지 */
+    @import url("https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css");
+
+    /* ── Design Tokens ──────────────────────────────────── */
+    :root {
+        --bg: #0A0D14;
+        --panel: rgba(255, 255, 255, 0.045);
+        --panel-solid: #12161F;
+        --line: rgba(255, 255, 255, 0.09);
+        --ink: #E7EAF2;
+        --ink-2: #C6CCDA;
+        --muted: #8B93A7;
+        --accent: #7C9CFF;
+        --accent-soft: rgba(124, 156, 255, 0.16);
+        --up: #FF6B6B;      /* 상승 — 한국 시장 관례 */
+        --down: #4D96FF;    /* 하락 — 한국 시장 관례 */
+        --radius: 14px;
+        --radius-sm: 8px;
     }
+
+    /* ── Base (Desktop) ─────────────────────────────────── */
+    html, body, [data-testid="stAppViewContainer"], [data-testid="stSidebar"] {
+        font-family: "Pretendard Variable", Pretendard, -apple-system, "Malgun Gothic", sans-serif;
+    }
+    [data-testid="stAppViewContainer"] {
+        background:
+            radial-gradient(1100px 480px at 18% -8%, var(--accent-soft), transparent 62%),
+            var(--bg);
+    }
+    .block-container { padding-top: 1rem; }
+
+    h1 { color: var(--ink); font-weight: 800; letter-spacing: -0.01em; }
+    h2 { color: var(--ink); font-weight: 700; }
+    h3 { color: var(--ink-2); font-weight: 700; }
+
+    /* 메트릭 — 글래스 카드 (신·구 셀렉터 병기) */
+    .stMetric, [data-testid="stMetric"] {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        padding: 15px 18px;
+        backdrop-filter: blur(8px);
+    }
+    .stMetric label, [data-testid="stMetricLabel"] { color: var(--muted); }
+    [data-testid="stMetricValue"], [data-testid="stMetricDelta"] {
+        font-variant-numeric: tabular-nums;
+    }
+
+    /* 보더 컨테이너 — 글래스 카드 */
+    [data-testid="stVerticalBlockBorderWrapper"] {
+        background: var(--panel);
+        border-radius: var(--radius);
+    }
+    /* 카드 안의 메트릭은 이중 카드 방지 — 평면화 */
+    [data-testid="stVerticalBlockBorderWrapper"] .stMetric,
+    [data-testid="stVerticalBlockBorderWrapper"] [data-testid="stMetric"] {
+        background: transparent;
+        border: 0;
+        border-radius: 0;
+        padding: 4px 2px;
+        backdrop-filter: none;
+    }
+
+    /* 사이드바 */
+    [data-testid="stSidebar"] {
+        background: var(--panel-solid);
+        border-right: 1px solid var(--line);
+    }
+
+    /* 탭 */
+    .stTabs [data-baseweb="tab-list"] button { color: var(--muted); }
+    .stTabs [data-baseweb="tab-list"] button[aria-selected="true"] { color: var(--accent); }
+    .stTabs [data-baseweb="tab-highlight"] { background-color: var(--accent); }
+
+    /* 버튼 — 라운드 통일 + 포커스 가시화 */
+    .stButton > button, .stLinkButton > a, .stDownloadButton > button {
+        border-radius: 10px;
+    }
+    .stButton > button:focus-visible,
+    .stLinkButton > a:focus-visible,
+    .stDownloadButton > button:focus-visible {
+        outline: 2px solid var(--accent);
+        outline-offset: 2px;
+    }
+
+    /* 구분선 */
+    hr { border-color: var(--line); }
+
+    /* info-card — 그라데이션·컬러보더 폐기, 글래스 카드로 통일 */
+    .info-card {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: var(--radius); padding: 20px; margin: 10px 0;
+    }
+    /* 페이지네이션 마커(비표시) — 이 마커를 품은 컬럼 행은 모바일에서도 가로 유지 */
+    .pager-marker { display: none; }
     /* iframe 반응형 */
     iframe {
         max-width: 100% !important;
         width: 100% !important;
+        border-radius: var(--radius-sm);
     }
 
     /* ── Mobile (max-width: 768px) ───────────────────────── */
@@ -30,7 +117,7 @@ def apply_custom_css():
             min-width: 0 !important;
         }
         /* 상단 고정 헤더(햄버거 메뉴 바)에 본문/사이드바 상단 글자가 가려지지 않게 여백 확보 */
-        [data-testid="stHeader"] { background: rgba(14,17,23,0.92) !important; }
+        [data-testid="stHeader"] { background: rgba(10, 13, 20, 0.92) !important; }
         [data-testid="stSidebarContent"],
         [data-testid="stSidebar"] > div:first-child {
             padding-top: 2.8rem !important;
@@ -47,9 +134,9 @@ def apply_custom_css():
         h2 { font-size: 1.2rem !important; }
         h3 { font-size: 1.05rem !important; }
         /* 메트릭 카드 축소 */
-        .stMetric {
+        .stMetric, [data-testid="stMetric"] {
             padding: 8px 10px !important;
-            border-radius: 8px !important;
+            border-radius: var(--radius-sm) !important;
         }
         .stMetric [data-testid="stMetricValue"] {
             font-size: 1.2rem !important;
@@ -68,6 +155,19 @@ def apply_custom_css():
         [data-testid="stHorizontalBlock"] > [data-testid="stColumn"] {
             min-width: 100% !important;
             flex: 1 1 100% !important;
+        }
+        /* 예외: 페이지네이션(◀ 1 2 3 ▶)은 세로로 쌓이면 어색 — 가로 유지 */
+        [data-testid="stHorizontalBlock"]:has(.pager-marker) {
+            flex-wrap: nowrap !important;
+            gap: 0.25rem !important;
+        }
+        [data-testid="stHorizontalBlock"]:has(.pager-marker) > [data-testid="stColumn"] {
+            min-width: 0 !important;
+            flex: 0 0 auto !important;
+        }
+        [data-testid="stHorizontalBlock"]:has(.pager-marker) .stButton > button {
+            min-height: 38px !important;
+            padding: 6px 12px !important;
         }
         /* 탭 글씨 축소 */
         .stTabs [data-baseweb="tab-list"] button {
@@ -104,7 +204,7 @@ def apply_custom_css():
         }
         [data-testid="stDataFrame"]::-webkit-scrollbar { height: 6px; }
         [data-testid="stDataFrame"]::-webkit-scrollbar-thumb {
-            background: #6B7280; border-radius: 3px;
+            background: var(--muted); border-radius: 3px;
         }
         /* 슬라이더 */
         .stSlider {
@@ -150,6 +250,14 @@ def apply_custom_css():
         [data-testid="stHorizontalBlock"] > [data-testid="stColumn"] {
             min-width: 48% !important;
             flex: 1 1 48% !important;
+        }
+        /* 예외: 페이지네이션은 가로 유지 */
+        [data-testid="stHorizontalBlock"]:has(.pager-marker) {
+            flex-wrap: nowrap !important;
+        }
+        [data-testid="stHorizontalBlock"]:has(.pager-marker) > [data-testid="stColumn"] {
+            min-width: 0 !important;
+            flex: 0 0 auto !important;
         }
     }
     </style>

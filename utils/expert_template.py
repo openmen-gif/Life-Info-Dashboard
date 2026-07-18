@@ -159,6 +159,8 @@ def _render_paginated_videos(videos: list[dict], page_key: str, per_page: int = 
             if st.button("▶", key=f"{page_key}_next", disabled=(cp >= total_pages - 1)):
                 st.session_state[page_key] = cp + 1
                 st.rerun()
+            # 모바일 세로 스택 예외용 마커 — css_loader의 :has(.pager-marker) 규칙이 참조
+            st.markdown('<span class="pager-marker"></span>', unsafe_allow_html=True)
         st.caption(f"페이지 {cp + 1} / {total_pages} (총 {total}건)")
 
 
@@ -193,7 +195,7 @@ def _render_video_card(v: dict, show_desc: bool = False):
     # Description
     if show_desc and v.get("description"):
         st.markdown(
-            f"<small style='color:#888'>{v['description'][:150]}</small>",
+            f"<small style='color:var(--muted)'>{v['description'][:150]}</small>",
             unsafe_allow_html=True,
         )
 
@@ -386,7 +388,7 @@ def render_expert_page(
                             for n in news[:4]:
                                 st.markdown(
                                     f"📰 **[{n['title']}]({n['link']})**  \n"
-                                    f"  <small style='color:#6B7280'>{n.get('source', '')} · 🕒 {n.get('published', '')}</small>",
+                                    f"  <small style='color:var(--muted)'>{n.get('source', '')} · {n.get('published', '')}</small>",
                                     unsafe_allow_html=True,
                                 )
                         # 카테고리별 경향 분석
@@ -407,7 +409,7 @@ def render_expert_page(
                 for n in auto_news[:5]:
                     st.markdown(
                         f"📰 **[{n['title']}]({n['link']})**  \n"
-                        f"  <small style='color:#6B7280'>{n.get('source', '')} · 🕒 {n.get('published', '')}</small>",
+                        f"  <small style='color:var(--muted)'>{n.get('source', '')} · {n.get('published', '')}</small>",
                         unsafe_allow_html=True,
                     )
             # 뉴스 경향 분석

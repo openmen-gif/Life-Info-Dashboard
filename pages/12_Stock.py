@@ -4,6 +4,7 @@ import streamlit as st
 import pandas as pd
 import datetime
 from utils.css_loader import apply_custom_css
+from utils.charts import render_trend_with_stats, render_normalized_compare
 from utils.data_fetcher import fetch_stock_data, fetch_kr_index, fetch_news_search, fetch_web_search, fetch_youtube_search, build_trend_for_query
 from utils.report_downloader import render_download_buttons
 
@@ -91,39 +92,19 @@ def _render_index_metrics(indices: dict, use_naver: bool = False):
 
 
 def _render_index_chart(symbol: str, name: str, period: str = "1mo"):
-    """지수 차트 + 통계 (미국 지수용 — yfinance)."""
+    """지수 차트 + 통계 (미국 지수용 — yfinance). Y축은 데이터 범위 밀착 자동."""
     data = fetch_stock_data(symbol, period=period)
     if data.get("ok") and data.get("history"):
-        df = pd.DataFrame(data["history"])
-        df["Date"] = pd.to_datetime(df["Date"])
-        st.line_chart(df.set_index("Date")["Close"])
-
-        prices = [r["Close"] for r in data["history"]]
-        sc1, sc2, sc3, sc4 = st.columns(4)
-        sc1.metric("최고", f"{max(prices):,.2f}")
-        sc2.metric("최저", f"{min(prices):,.2f}")
-        sc3.metric("평균", f"{sum(prices)/len(prices):,.2f}")
-        change_total = prices[-1] - prices[0]
-        sc4.metric("기간 변동", f"{change_total:+,.2f}")
+        render_trend_with_stats(data["history"], unit="", decimals=2)
     else:
         st.warning(f"{name} 차트 데이터를 가져오지 못했습니다.")
 
 
 def _render_kr_index_chart(code: str, name: str, period: str = "1mo"):
-    """국내 지수 차트 + 통계 (네이버 금융 API)."""
+    """국내 지수 차트 + 통계 (네이버 금융 API, 장애 시 yfinance 폴백). Y축 밀착 자동."""
     data = fetch_kr_index(code, period=period)
     if data.get("ok") and data.get("history"):
-        df = pd.DataFrame(data["history"])
-        df["Date"] = pd.to_datetime(df["Date"])
-        st.line_chart(df.set_index("Date")["Close"])
-
-        prices = [r["Close"] for r in data["history"]]
-        sc1, sc2, sc3, sc4 = st.columns(4)
-        sc1.metric("최고", f"{max(prices):,.2f}")
-        sc2.metric("최저", f"{min(prices):,.2f}")
-        sc3.metric("평균", f"{sum(prices)/len(prices):,.2f}")
-        change_total = prices[-1] - prices[0]
-        sc4.metric("기간 변동", f"{change_total:+,.2f}")
+        render_trend_with_stats(data["history"], unit="", decimals=2)
     else:
         st.warning(f"{name} 차트 데이터를 가져오지 못했습니다.")
 
@@ -237,23 +218,13 @@ with tab_compare:
             else:
                 st.metric(f"🇺🇸 {us_name}", "N/A")
 
-        # 정규화 차트 (ETF 기반, 시작점=100 기준)
+        # 정규화 차트 (ETF 기반, 시작점=100 기준) — Y축은 데이터 범위 밀착 자동
         kr_d_chart = fetch_stock_data(kr_sym, period=period_cmp)
         if kr_d_chart.get("ok") and us_d.get("ok") and kr_d_chart.get("history") and us_d.get("history"):
-            kr_prices = [r["Close"] for r in kr_d_chart["history"]]
-            us_prices = [r["Close"] for r in us_d["history"]]
-            min_len = min(len(kr_prices), len(us_prices))
-            if min_len > 1:
-                kr_norm = [p / kr_prices[0] * 100 for p in kr_prices[:min_len]]
-                us_norm = [p / us_prices[0] * 100 for p in us_prices[:min_len]]
-                dates = [r["Date"] for r in kr_d_chart["history"][:min_len]]
-                df_cmp = pd.DataFrame({
-                    "Date": pd.to_datetime(dates),
-                    kr_name: kr_norm,
-                    us_name: us_norm,
-                }).set_index("Date")
-                st.line_chart(df_cmp)
-                st.caption("※ 시작일 = 100 기준 정규화 비교 (ETF 기반 차트)")
+            render_normalized_compare(
+                {kr_name: kr_d_chart["history"], us_name: us_d["history"]},
+                "※ 시작일 = 100 기준 정규화 비교 (ETF 기반 차트) · Y축은 데이터 범위에 맞춤",
+            )
         st.markdown("---")
 
     # 통합 비교 테이블
@@ -261,7 +232,8 @@ with tab_compare:
     all_indices = {**KR_INDICES, **US_INDICES}
     comp_rows = []
     for symbol, (name, flag) in all_indices.items():
-        d = fetch_stock_data(symbol, period="5d")
+        # KR 지수는 yfinance에 "KOSPI" 심볼이 없어 404 — 네이버 API(+폴백) 경유
+        d = fetch_kr_index(symbol, period="5d") if symbol in KR_INDICES else fetch_stock_data(symbol, period="5d")
         if d.get("ok"):
             comp_rows.append({
                 "지수": f"{flag} {name}",

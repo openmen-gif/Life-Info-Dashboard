@@ -16,14 +16,6 @@ pages = {
     "메인": [
         st.Page("pages/00_Home.py", title="홈", icon="🏠"),
     ],
-    "🚨 안전·재난·정책": [
-        st.Page("pages/33_Safety.py", title="재난·안전", icon="🚨"),
-        st.Page("pages/36_CyberSecurity.py", title="사이버 보안", icon="🛡️"),
-        st.Page("pages/34_PublicUtility.py", title="공공요금", icon="💡"),
-        st.Page("pages/35_Policy.py", title="정부 정책", icon="🏛️"),
-        st.Page("pages/31_Environment.py", title="환경/에너지", icon="🌱"),
-        st.Page("pages/11_Legal.py", title="생활법률", icon="⚖️"),
-    ],
     "🌤️ 일상·생활": [
         st.Page("pages/01_Weather.py", title="날씨", icon="🌤️"),
         st.Page("pages/02_News.py", title="뉴스", icon="📰"),
@@ -37,6 +29,14 @@ pages = {
         st.Page("pages/12_Stock.py", title="주식 분석", icon="📈"),
         st.Page("pages/18_Exchange.py", title="환율/유가", icon="💱"),
         st.Page("pages/32_Crypto.py", title="암호화폐", icon="🪙"),
+    ],
+    "🚨 안전·재난·정책": [
+        st.Page("pages/33_Safety.py", title="재난·안전", icon="🚨"),
+        st.Page("pages/36_CyberSecurity.py", title="사이버 보안", icon="🛡️"),
+        st.Page("pages/34_PublicUtility.py", title="공공요금", icon="💡"),
+        st.Page("pages/35_Policy.py", title="정부 정책", icon="🏛️"),
+        st.Page("pages/31_Environment.py", title="환경/에너지", icon="🌱"),
+        st.Page("pages/11_Legal.py", title="생활법률", icon="⚖️"),
     ],
     "🏠 부동산·자동차": [
         st.Page("pages/08_RealEstate.py", title="부동산", icon="🏠"),

@@ -1161,6 +1161,12 @@ def fetch_kr_index(code: str = "KOSPI", period: str = "1mo") -> dict:
             "updated": datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
         }
     except Exception:
+        # 네이버 API 일시 장애 시 yfinance 지수 심볼로 전체 폴백 (현재가+히스토리)
+        _yf_code = {"KOSPI": "^KS11", "KOSDAQ": "^KQ11"}.get(code)
+        if _yf_code:
+            fb = fetch_stock_data(_yf_code, period=period)
+            if fb.get("ok"):
+                return {**fb, "name": code, "symbol": code}
         return {"symbol": code, "ok": False}
 
 
