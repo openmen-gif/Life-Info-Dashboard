@@ -10,6 +10,11 @@ render_expert_page(
     icon="👴",
     default_query="고령화 노인 실버산업 시니어 케어 정책",
     auto_news_query="고령화 노인 실버산업 시니어 요양",
+    # [주석] 글로벌 고령화 및 헬스케어/실버케어 실물 경제를 모니터링하는 대표 지표(ETF)를 연동합니다.
+    tickers={
+        "OLD": "실버케어",  # Janus Henderson Long-Term Care ETF
+        "LNGR": "실버테크",  # Global X Longevity Thematic ETF
+    },
     sub_topics=[
         ("👴", "노인 복지/연금", "노인 복지 기초연금 노령연금 어르신"),
         ("🏥", "요양/돌봄", "요양원 요양병원 노인장기요양 돌봄 서비스"),

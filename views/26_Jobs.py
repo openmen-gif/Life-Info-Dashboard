@@ -18,6 +18,11 @@ render_expert_page(
         ("🏢", "이직/커리어", "이직 경력개발 연봉협상 커리어 전환"),
     ],
     auto_news_query="채용 취업 고용 시장 구인 자격증",
+    # [주석] 글로벌 취업/채용 및 고용 흐름(HR서비스)을 모니터링하는 대표 시세 지표를 연동합니다.
+    tickers={
+        "MAN": "맨파워그룹",  # ManpowerGroup Inc. (Global Recruitment)
+        "RNDY": "란스타드",  # Randstad NV ADR (Global HR Services)
+    },
     external_links=[
         ("💼 사람인", "https://www.saramin.co.kr/"),
         ("📋 잡코리아", "https://www.jobkorea.co.kr/"),

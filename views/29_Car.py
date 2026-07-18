@@ -10,6 +10,12 @@ render_expert_page(
     icon="🚗",
     default_query="신차 출시 중고차 시세 자동차 보험 동향",
     auto_news_query="자동차 신차 전기차 중고차 시세",
+    # [주석] 글로벌 자동차 시장을 모니터링하는 대표 ETF 및 개별 제조사 시세를 연동합니다.
+    tickers={
+        "CARZ": "글로벌자동차",  # First Trust NASDAQ Global Auto Index Fund
+        "TSLA": "테슬라",
+        "7203.T": "토요타",
+    },
     sub_topics=[
         ("🚙", "신차/출시", "신차 출시 자동차 리뷰 시승"),
         ("🔋", "전기차/수소차", "전기차 수소차 충전 보조금 테슬라"),

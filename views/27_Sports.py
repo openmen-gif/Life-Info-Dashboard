@@ -10,6 +10,11 @@ render_expert_page(
     icon="⚽",
     default_query="KBO MLB EPL NBA 스포츠 경기 결과 분석",
     auto_news_query="프로야구 축구 농구 스포츠 경기 결과",
+    # [주석] 글로벌 스포츠 비즈니스 및 브랜드 흐름을 대표하는 시세 지표를 연동합니다.
+    tickers={
+        "NKE": "나이키",  # Nike, Inc. (NKE)
+        "ADDYY": "아디다스",  # Adidas AG ADR (ADDYY)
+    },
     sub_topics=[
         ("⚾", "야구", "KBO MLB 프로야구 경기 결과 순위"),
         ("⚽", "축구", "K리그 EPL 해외축구 경기 결과"),

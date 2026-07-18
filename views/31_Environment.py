@@ -10,6 +10,11 @@ render_expert_page(
     icon="🌱",
     default_query="미세먼지 탄소중립 신재생에너지 환경 동향",
     auto_news_query="미세먼지 대기질 기후변화 탄소중립 환경",
+    # [주석] 글로벌 기후변화 및 친환경 신재생에너지 시장을 모니터링하는 대표 지표(ETF)를 연동합니다.
+    tickers={
+        "ICLN": "글로벌클린에너지",  # iShares Global Clean Energy ETF
+        "QCLN": "친환경테크",  # First Trust Nasdaq Clean Edge Green Energy Index Fund
+    },
     sub_topics=[
         ("😷", "미세먼지/대기질", "미세먼지 초미세먼지 대기질 황사 예보"),
         ("🌡️", "기후변화/재해", "기후변화 폭염 폭우 가뭄 자연재해"),

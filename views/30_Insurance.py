@@ -10,6 +10,11 @@ render_expert_page(
     icon="🛡️",
     default_query="보험 연금 국민연금 건강보험 실손보험 동향",
     auto_news_query="국민연금 건강보험 실손보험 보험료 연금",
+    # [주석] 글로벌 보험 및 금융 서비스 시장을 모니터링하는 대표 지표(ETF)를 연동합니다.
+    tickers={
+        "KIE": "글로벌보험",  # SPDR S&P Insurance ETF
+        "IYG": "금융서비스",  # iShares U.S. Financial Services ETF
+    },
     sub_topics=[
         ("🏥", "건강/실손보험", "실손보험 건강보험 의료보험 보험료"),
         ("👴", "국민연금/퇴직연금", "국민연금 퇴직연금 개인연금 수령액"),
