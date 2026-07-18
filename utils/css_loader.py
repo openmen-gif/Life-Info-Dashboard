@@ -36,7 +36,17 @@ def apply_custom_css():
             radial-gradient(1100px 480px at 18% -8%, var(--accent-soft), transparent 62%),
             var(--bg);
     }
-    .block-container { padding-top: 1rem; }
+    /* 본문 폭 제한 + 중앙 정렬 — 초광폭 화면에서 가장자리 붙음(사이드 여백 부족) 방지 */
+    .block-container,
+    [data-testid="stMainBlockContainer"],
+    [data-testid="stAppViewBlockContainer"] {
+        padding-top: 1rem;
+        max-width: 1320px;
+        padding-left: 3rem;
+        padding-right: 3rem;
+        margin-left: auto;
+        margin-right: auto;
+    }
 
     h1 { color: var(--ink); font-weight: 800; letter-spacing: -0.01em; }
     h2 { color: var(--ink); font-weight: 700; }
