@@ -1140,7 +1140,7 @@ def _kr_period_to_range(period: str) -> str:
     return {"5d": "1W", "1mo": "1M", "3mo": "3M", "6mo": "6M", "1y": "1Y"}.get(period, "1M")
 
 
-@st.cache_data(ttl=300, show_spinner=False)
+@st.cache_data(ttl=3600, show_spinner=False)
 def fetch_kr_index(code: str = "KOSPI", period: str = "1mo") -> dict:
     """네이버 금융 API로 한국 지수(KOSPI/KOSDAQ) 실시간 + 히스토리 데이터 조회."""
     headers = {"User-Agent": "Mozilla/5.0"}
@@ -1231,7 +1231,7 @@ def fetch_kr_index(code: str = "KOSPI", period: str = "1mo") -> dict:
         return {"symbol": code, "ok": False}
 
 
-@st.cache_data(ttl=300, show_spinner=False)
+@st.cache_data(ttl=3600, show_spinner=False)
 def fetch_stock_data(symbol: str, period: str = "5d") -> dict:
     """Fetch stock/index data via yfinance (free, no key).
     Returns: {name, symbol, price, change, change_pct, history, ok}

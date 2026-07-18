@@ -354,12 +354,25 @@ def render_expert_page(
             "차트 기간", ["5d", "1mo", "3mo", "6mo", "1y"], index=1, key=f"chart_period_{title}"
         )
         
+        # [주석] 탭 전환 시 동기식 순차 호출로 인한 프리즈를 예방하기 위해 
+        #        모든 티커의 1y 데이터를 ThreadPoolExecutor를 사용해 동시 병렬 사전 수집합니다.
+        from concurrent.futures import ThreadPoolExecutor
+        symbols = [sym for sym, _name in ticker_items]
+        with ThreadPoolExecutor(max_workers=min(len(symbols), 8)) as executor:
+            futures = {executor.submit(fetch_stock_data, sym, "1y"): sym for sym in symbols}
+            prefetched_results = {}
+            for future in futures:
+                sym = futures[future]
+                try:
+                    prefetched_results[sym] = future.result()
+                except Exception:
+                    prefetched_results[sym] = {"ok": False}
+        
         ticker_tabs = st.tabs([name for _sym, name in ticker_items])
         for _tab, (symbol, name) in zip(ticker_tabs, ticker_items):
             with _tab:
                 st.markdown(f"##### 📈 {name} ({symbol}) 추이")
-                # 1년치 캐싱 수집 후 로컬 슬라이싱 필터로 Rerun 시 즉각 반응
-                d = fetch_stock_data(symbol, period="1y")
+                d = prefetched_results.get(symbol, {"ok": False})
                 if d.get("ok") and d.get("history"):
                     _hist = slice_history(d["history"], chart_period)
                     render_line_tight(_hist)
