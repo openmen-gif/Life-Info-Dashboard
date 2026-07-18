@@ -51,10 +51,16 @@ def _render_trend_tile(label: str, value: str, delta: str, hist: list):
             mode="lines", line=dict(color=_ACCENT, width=2),
             hovertemplate="%{x}<br>%{y:,.2f}<extra></extra>",
         ))
+        # 현시점 점 마커 (수치는 위 메트릭에 이미 표시)
+        fig.add_trace(go.Scatter(x=[hist[-1]["Date"]], y=[hist[-1]["Close"]],
+                                 mode="markers", marker=dict(color=_ACCENT, size=7),
+                                 showlegend=False, hoverinfo="skip"))
         fig.update_layout(
-            height=96, margin=dict(l=0, r=0, t=4, b=0),
+            height=104, margin=dict(l=0, r=0, t=4, b=0),
             paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-            xaxis=dict(visible=False), yaxis=dict(visible=False), showlegend=False,
+            xaxis=dict(visible=True, nticks=3, tickformat="%m/%d",
+                       tickfont=dict(size=9), showgrid=False),
+            yaxis=dict(visible=False), showlegend=False,
         )
         st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
 

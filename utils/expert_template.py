@@ -129,7 +129,9 @@ _PLATFORM_ICONS = {
 }
 
 
+@st.fragment
 def _render_paginated_videos(videos: list[dict], page_key: str, per_page: int = 4):
+    # fragment: 페이지 버튼 클릭 시 이 구역만 재실행 — 페이지 전체 rerun 딜레이 제거
     """Shared helper: render paginated video grid with navigation."""
     import math
     total = len(videos)
@@ -149,17 +151,17 @@ def _render_paginated_videos(videos: list[dict], page_key: str, per_page: int = 
         with nav_cols[0]:
             if st.button("◀", key=f"{page_key}_prev", disabled=(cp == 0)):
                 st.session_state[page_key] = cp - 1
-                st.rerun()
+                st.rerun(scope="fragment")
         for p in range(total_pages):
             with nav_cols[p + 1]:
                 label = f"**[{p+1}]**" if p == cp else f"{p+1}"
                 if st.button(label, key=f"{page_key}_p{p}"):
                     st.session_state[page_key] = p
-                    st.rerun()
+                    st.rerun(scope="fragment")
         with nav_cols[total_pages + 1]:
             if st.button("▶", key=f"{page_key}_next", disabled=(cp >= total_pages - 1)):
                 st.session_state[page_key] = cp + 1
-                st.rerun()
+                st.rerun(scope="fragment")
             # 모바일 세로 스택 예외용 마커 — css_loader의 :has(.pager-marker) 규칙이 참조
             st.markdown('<span class="pager-marker"></span>', unsafe_allow_html=True)
         st.caption(f"페이지 {cp + 1} / {total_pages} (총 {total}건)")

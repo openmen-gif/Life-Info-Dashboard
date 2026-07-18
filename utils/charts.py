@@ -48,6 +48,14 @@ def render_trend_with_stats(history: list, unit: str = "", decimals: int = 2,
         mode="lines", line=dict(color=ACCENT, width=2),
         hovertemplate="%{x}<br>%{y:,." + str(decimals) + "f}<extra></extra>",
     ))
+    # 현시점(마지막) 값 — 점 마커 + 숫자 라벨
+    _lx, _ly = history[-1]["Date"], closes[-1]
+    fig.add_trace(go.Scatter(x=[_lx], y=[_ly], mode="markers",
+                             marker=dict(color=ACCENT, size=8),
+                             showlegend=False, hoverinfo="skip"))
+    fig.add_annotation(x=_lx, y=_ly, text=f"{_ly:,.{decimals}f}",
+                       showarrow=False, xanchor="right", yanchor="bottom",
+                       font=dict(size=11))
     fig.update_layout(
         height=height, margin=dict(l=0, r=0, t=8, b=0),
         paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
@@ -113,6 +121,18 @@ def render_temp_daily(daily: list, today: str, height: int = 340) -> None:
     fig.add_vline(x=today, line_dash="dot", line_color=_REF_LINE)
     fig.add_annotation(x=today, y=1, yref="paper", text="오늘", showarrow=False,
                        yanchor="bottom", font=dict(size=11))
+    # 현시점(오늘) 최고·최저 수치 표기
+    _tr = next((r for r in daily if r["Date"] == today), None)
+    if _tr:
+        fig.add_trace(go.Scatter(x=[today, today], y=[_tr["tmax"], _tr["tmin"]],
+                                 mode="markers", marker=dict(color=[UP, DOWN], size=8),
+                                 showlegend=False, hoverinfo="skip"))
+        fig.add_annotation(x=today, y=_tr["tmax"], text=f"{_tr['tmax']:.0f}°",
+                           showarrow=False, xanchor="left", yanchor="bottom",
+                           font=dict(size=12, color=UP))
+        fig.add_annotation(x=today, y=_tr["tmin"], text=f"{_tr['tmin']:.0f}°",
+                           showarrow=False, xanchor="left", yanchor="top",
+                           font=dict(size=12, color=DOWN))
     fig.update_layout(
         height=height, margin=dict(l=0, r=0, t=28, b=0),
         paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
@@ -151,14 +171,27 @@ def render_temp_hourly(hourly: list, now_hour: str, height: int = 280,
             hovertemplate="%{x}<br>%{y:.1f}°C<extra>예보</extra>"))
     fig.add_vline(x=now_hour, line_dash="dot", line_color=_REF_LINE)
 
+    # 현시점(지금) 기온 — 점 마커 + 수치 표기
+    _now_row = next((r for r in hourly if r["Time"] == now_hour), None) or (past[-1] if past else None)
+    if _now_row:
+        fig.add_trace(go.Scatter(x=[_now_row["Time"]], y=[_now_row["temp"]],
+                                 mode="markers", marker=dict(color=ACCENT, size=7),
+                                 showlegend=False, hoverinfo="skip"))
+        fig.add_annotation(x=_now_row["Time"], y=_now_row["temp"],
+                           text=f"{_now_row['temp']:.1f}°", showarrow=False,
+                           xanchor="left", yanchor="bottom",
+                           font=dict(size=10 if compact else 12, color=ACCENT))
+
     vals = [r["temp"] for r in hourly]
     pad = max((max(vals) - min(vals)) * 0.1, 0.5)
     if compact:
         fig.update_layout(
-            height=max(70, height if height < 200 else 90),
+            height=max(70, height if height < 200 else 96),
             margin=dict(l=0, r=0, t=2, b=0),
             paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-            xaxis=dict(visible=False), yaxis=dict(visible=False),
+            xaxis=dict(visible=True, nticks=3, tickformat="%m/%d %H시",
+                       tickfont=dict(size=9), showgrid=False),
+            yaxis=dict(visible=False),
             showlegend=False,
         )
     else:
@@ -202,6 +235,11 @@ def render_normalized_compare(series_map: dict, caption: str, height: int = 340)
         fig.add_trace(go.Scatter(x=x, y=df_norm[col], mode="lines",
                                  name=str(col), line=dict(width=2)))
     fig.add_hline(y=100, line_dash="dot", line_color="rgba(255,255,255,0.25)")
+    # 현시점(마지막) 상대값 수치 표기 — 시리즈별
+    for col in df_norm.columns:
+        fig.add_annotation(x=x[-1], y=float(df_norm[col].iloc[-1]),
+                           text=f"{df_norm[col].iloc[-1]:,.1f}", showarrow=False,
+                           xanchor="right", yanchor="bottom", font=dict(size=10))
     fig.update_layout(
         height=height, margin=dict(l=0, r=0, t=8, b=0),
         paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",

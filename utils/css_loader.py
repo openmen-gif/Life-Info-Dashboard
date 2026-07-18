@@ -174,13 +174,13 @@ def apply_custom_css():
             border-radius: var(--radius-sm) !important;
         }
         .stMetric [data-testid="stMetricValue"] {
-            font-size: 1.2rem !important;
+            font-size: 1.35rem !important;
         }
         .stMetric [data-testid="stMetricLabel"] {
-            font-size: 0.75rem !important;
+            font-size: 0.8rem !important;
         }
         .stMetric [data-testid="stMetricDelta"] {
-            font-size: 0.7rem !important;
+            font-size: 0.75rem !important;
         }
         /* Columns → 세로 스택 */
         [data-testid="stHorizontalBlock"] {
@@ -206,8 +206,8 @@ def apply_custom_css():
         }
         /* 탭 글씨 축소 */
         .stTabs [data-baseweb="tab-list"] button {
-            font-size: 0.8rem !important;
-            padding: 6px 10px !important;
+            font-size: 0.85rem !important;
+            padding: 7px 11px !important;
         }
         /* 버튼 — 터치 타깃 최소 44px 확보(Apple/Google 모바일 접근성 권장) */
         .stButton > button {
@@ -245,9 +245,9 @@ def apply_custom_css():
         .stSlider {
             padding: 0 !important;
         }
-        /* 캡션 / 작은 텍스트 */
+        /* 캡션 / 작은 텍스트 — 폰 가독성 위해 과축소 완화 */
         .stCaption, small {
-            font-size: 0.7rem !important;
+            font-size: 0.8rem !important;
         }
     }
 

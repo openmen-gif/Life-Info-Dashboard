@@ -36,6 +36,65 @@ with col_t:
 # ═══════════════════════════════════════════════════════════════════════════
 # 탭 구성: 환율 | 유가 | 전문가 분석
 # ═══════════════════════════════════════════════════════════════════════════
+# fragment: 차트 기간 변경 시 해당 구간만 재실행 — 페이지 전체 rerun 딜레이 제거
+@st.fragment
+def _fx_trend_section():
+    st.markdown("### 📈 환율 추세")
+    fx_period = st.selectbox(
+        "차트 기간", ["5d", "1mo", "3mo", "6mo", "1y"], index=1, key="fx_trend_period"
+    )
+    fx_hist = fetch_fx_history(("KRW", "EUR", "JPY", "CNY"), period=fx_period)
+    if fx_hist.get("ok"):
+        # (코드, 라벨, 단위, 소수, Y축 눈금) — KRW는 10원 간격 고정, 나머지 자동(1-2-5 계열)
+        _FX_TREND = [
+            ("KRW", "USD→KRW", "₩", 2, 10),
+            ("EUR", "USD→EUR", "€", 4, None),
+            ("JPY", "USD→JPY", "¥", 2, None),
+            ("CNY", "USD→CNY", "¥", 4, None),
+        ]
+        fx_trend_tabs = st.tabs([label for _c, label, _u, _d, _t in _FX_TREND])
+        for _tab, (code, label, unit, dec, tick) in zip(fx_trend_tabs, _FX_TREND):
+            with _tab:
+                st.markdown(f"#### 📈 {label} 추이")
+                _render_trend_with_stats(
+                    fx_hist["history"].get(code, []), unit=unit, decimals=dec, dtick=tick
+                )
+        st.caption("※ ECB 기준 환율(Frankfurter), 영업일 1회 갱신 · 실시간 값은 상단 카드 참조")
+
+        # ── 통화 비교 — 상대 변화율 (주식 '국장 vs 미장'과 동일 방식) ──
+        st.markdown("### 📊 통화 비교 — 상대 변화율")
+        _fx_cmp = {label: fx_hist["history"].get(code, [])
+                   for code, label, _u, _d, _t in _FX_TREND}
+        _render_normalized_compare(
+            _fx_cmp, "※ 시작일 = 100 기준 정규화 비교 · 기간은 상단 '차트 기간' 선택을 따릅니다"
+        )
+    else:
+        st.warning("환율 추세 데이터를 가져오지 못했습니다. (Frankfurter/ECB)")
+
+
+@st.fragment
+def _oil_trend_section():
+    st.markdown("### 📈 유가 추세")
+    oil_period = st.selectbox(
+        "차트 기간", ["5d", "1mo", "3mo", "6mo", "1y"], index=1, key="oil_trend_period"
+    )
+    oil_trend_tabs = st.tabs([name for _sym, (name, _icon) in OIL_INDICES.items()])
+    _oil_cmp = {}
+    for _tab, (symbol, (name, icon)) in zip(oil_trend_tabs, OIL_INDICES.items()):
+        with _tab:
+            st.markdown(f"#### {icon} {name} 추이")
+            d = fetch_stock_data(symbol, period=oil_period)
+            _hist = d.get("history", []) if d.get("ok") else []
+            _oil_cmp[name] = _hist
+            _render_trend_with_stats(_hist, unit="$", decimals=2)
+
+    # ── 에너지 비교 — 상대 변화율 (주식 '국장 vs 미장'과 동일 방식) ──
+    st.markdown("### 📊 에너지 비교 — 상대 변화율")
+    _render_normalized_compare(
+        _oil_cmp, "※ 시작일 = 100 기준 정규화 비교 · 기간은 상단 '차트 기간' 선택을 따릅니다"
+    )
+
+
 tab_fx, tab_oil, tab_expert = st.tabs(["💱 실시간 환율", "🛢️ 국제 유가", "📊 전문가 분석"])
 
 # ── 탭 1: 실시간 환율 ─────────────────────────────────────────────────────
@@ -92,39 +151,9 @@ with tab_fx:
     else:
         st.error("환율 데이터를 가져오지 못했습니다. 네트워크를 확인하세요.")
 
-    # ── 환율 추세 (Frankfurter/ECB) ──────────────────────────────────
+    # ── 환율 추세 (Frankfurter/ECB) — fragment 부분 재실행 ──────────
     st.markdown("---")
-    st.markdown("### 📈 환율 추세")
-    fx_period = st.selectbox(
-        "차트 기간", ["5d", "1mo", "3mo", "6mo", "1y"], index=1, key="fx_trend_period"
-    )
-    fx_hist = fetch_fx_history(("KRW", "EUR", "JPY", "CNY"), period=fx_period)
-    if fx_hist.get("ok"):
-        # (코드, 라벨, 단위, 소수, Y축 눈금) — KRW는 10원 간격 고정, 나머지 자동(1-2-5 계열)
-        _FX_TREND = [
-            ("KRW", "USD→KRW", "₩", 2, 10),
-            ("EUR", "USD→EUR", "€", 4, None),
-            ("JPY", "USD→JPY", "¥", 2, None),
-            ("CNY", "USD→CNY", "¥", 4, None),
-        ]
-        fx_trend_tabs = st.tabs([label for _c, label, _u, _d, _t in _FX_TREND])
-        for _tab, (code, label, unit, dec, tick) in zip(fx_trend_tabs, _FX_TREND):
-            with _tab:
-                st.markdown(f"#### 📈 {label} 추이")
-                _render_trend_with_stats(
-                    fx_hist["history"].get(code, []), unit=unit, decimals=dec, dtick=tick
-                )
-        st.caption("※ ECB 기준 환율(Frankfurter), 영업일 1회 갱신 · 실시간 값은 상단 카드 참조")
-
-        # ── 통화 비교 — 상대 변화율 (주식 '국장 vs 미장'과 동일 방식) ──
-        st.markdown("### 📊 통화 비교 — 상대 변화율")
-        _fx_cmp = {label: fx_hist["history"].get(code, [])
-                   for code, label, _u, _d, _t in _FX_TREND}
-        _render_normalized_compare(
-            _fx_cmp, "※ 시작일 = 100 기준 정규화 비교 · 기간은 상단 '차트 기간' 선택을 따릅니다"
-        )
-    else:
-        st.warning("환율 추세 데이터를 가져오지 못했습니다. (Frankfurter/ECB)")
+    _fx_trend_section()
 
 # ── 탭 2: 국제 유가 ──────────────────────────────────────────────────────
 OIL_INDICES = {
@@ -150,26 +179,8 @@ with tab_oil:
             else:
                 col.metric(f"{icon} {name}", "N/A")
 
-    # ── 유가 추세 (기간 선택 + 4종 탭) ────────────────────────────────
-    st.markdown("### 📈 유가 추세")
-    oil_period = st.selectbox(
-        "차트 기간", ["5d", "1mo", "3mo", "6mo", "1y"], index=1, key="oil_trend_period"
-    )
-    oil_trend_tabs = st.tabs([name for _sym, (name, _icon) in OIL_INDICES.items()])
-    _oil_cmp = {}
-    for _tab, (symbol, (name, icon)) in zip(oil_trend_tabs, OIL_INDICES.items()):
-        with _tab:
-            st.markdown(f"#### {icon} {name} 추이")
-            d = fetch_stock_data(symbol, period=oil_period)
-            _hist = d.get("history", []) if d.get("ok") else []
-            _oil_cmp[name] = _hist
-            _render_trend_with_stats(_hist, unit="$", decimals=2)
-
-    # ── 에너지 비교 — 상대 변화율 (주식 '국장 vs 미장'과 동일 방식) ──
-    st.markdown("### 📊 에너지 비교 — 상대 변화율")
-    _render_normalized_compare(
-        _oil_cmp, "※ 시작일 = 100 기준 정규화 비교 · 기간은 상단 '차트 기간' 선택을 따릅니다"
-    )
+    # ── 유가 추세 + 에너지 비교 — fragment 부분 재실행 ────────────────
+    _oil_trend_section()
 
     # 유가 관련 뉴스
     st.markdown("### 📰 유가 관련 뉴스")

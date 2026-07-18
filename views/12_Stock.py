@@ -130,18 +130,31 @@ def _render_stock_table(stocks: dict):
         st.info("종목 데이터를 가져오지 못했습니다.")
 
 
+# fragment: 기간 변경 시 차트 구간만 재실행 — 페이지 전체 rerun 딜레이 제거
+@st.fragment
+def _kr_trend_section():
+    period_kr = st.selectbox("차트 기간", ["5d", "1mo", "3mo", "6mo", "1y"], index=1, key="kr_period")
+    st.markdown("### 📈 KOSPI 추이")
+    _render_kr_index_chart("KOSPI", "KOSPI", period_kr)
+    st.markdown("### 📈 KOSDAQ 추이")
+    _render_kr_index_chart("KOSDAQ", "KOSDAQ", period_kr)
+
+
+@st.fragment
+def _us_trend_section():
+    period_us = st.selectbox("차트 기간", ["5d", "1mo", "3mo", "6mo", "1y"], index=1, key="us_period")
+    st.markdown("### 📈 S&P 500 추이")
+    _render_index_chart("^GSPC", "S&P 500", period_us)
+    st.markdown("### 📈 NASDAQ 추이")
+    _render_index_chart("^IXIC", "NASDAQ", period_us)
+
+
 # ── 탭 1: 국내 증시 ──────────────────────────────────────────────────────
 with tab_kr:
     st.markdown("## 🇰🇷 국내 증시 실시간 현황")
     kr_data = _render_index_metrics(KR_INDICES, use_naver=True)
 
-    period_kr = st.selectbox("차트 기간", ["5d", "1mo", "3mo", "6mo", "1y"], index=1, key="kr_period")
-
-    st.markdown("### 📈 KOSPI 추이")
-    _render_kr_index_chart("KOSPI", "KOSPI", period_kr)
-
-    st.markdown("### 📈 KOSDAQ 추이")
-    _render_kr_index_chart("KOSDAQ", "KOSDAQ", period_kr)
+    _kr_trend_section()
 
     st.markdown("### 🏢 주요 국내 종목")
     with st.spinner("종목 데이터 로딩 중..."):
@@ -164,13 +177,7 @@ with tab_us:
     st.markdown("## 🇺🇸 미국 증시 실시간 현황")
     us_data = _render_index_metrics(US_INDICES)
 
-    period_us = st.selectbox("차트 기간", ["5d", "1mo", "3mo", "6mo", "1y"], index=1, key="us_period")
-
-    st.markdown("### 📈 S&P 500 추이")
-    _render_index_chart("^GSPC", "S&P 500", period_us)
-
-    st.markdown("### 📈 NASDAQ 추이")
-    _render_index_chart("^IXIC", "NASDAQ", period_us)
+    _us_trend_section()
 
     st.markdown("### 🏢 주요 미국 종목")
     with st.spinner("종목 데이터 로딩 중..."):
@@ -188,10 +195,9 @@ with tab_us:
     else:
         st.info("뉴스를 가져오지 못했습니다.")
 
-# ── 탭 3: 국장 vs 미장 비교 ──────────────────────────────────────────────
-with tab_compare:
-    st.markdown("## 📊 국장 vs 미장 비교")
-
+# fragment: 비교 기간 변경 시 이 구간만 재실행
+@st.fragment
+def _compare_section():
     period_cmp = st.selectbox("비교 기간", ["5d", "1mo", "3mo", "6mo", "1y"], index=1, key="cmp_period")
 
     compare_pairs = [
@@ -226,6 +232,11 @@ with tab_compare:
                 "※ 시작일 = 100 기준 정규화 비교 (ETF 기반 차트) · Y축은 데이터 범위에 맞춤",
             )
         st.markdown("---")
+
+
+with tab_compare:
+    st.markdown("## 📊 국장 vs 미장 비교")
+    _compare_section()
 
     # 통합 비교 테이블
     st.markdown("### 📋 주요 지수 종합 비교")
@@ -296,14 +307,18 @@ with tab_watchlist:
                 else:
                     st.metric(sym, "N/A", help="데이터 로딩 실패")
 
-        # 관심 종목 차트
-        st.markdown("### 📈 관심 종목 차트")
-        wl_period = st.selectbox("차트 기간", ["5d", "1mo", "3mo", "6mo", "1y"], index=1, key="wl_period")
-        for sym in st.session_state.watchlist:
-            d = fetch_stock_data(sym, period=wl_period)
-            if d.get("ok") and d.get("history"):
-                st.markdown(f"**{sym}**")
-                render_line_tight(d["history"])
+        # 관심 종목 차트 — fragment: 기간 변경 시 이 구간만 재실행
+        @st.fragment
+        def _watchlist_charts():
+            st.markdown("### 📈 관심 종목 차트")
+            wl_period = st.selectbox("차트 기간", ["5d", "1mo", "3mo", "6mo", "1y"], index=1, key="wl_period")
+            for sym in st.session_state.watchlist:
+                d = fetch_stock_data(sym, period=wl_period)
+                if d.get("ok") and d.get("history"):
+                    st.markdown(f"**{sym}**")
+                    render_line_tight(d["history"])
+
+        _watchlist_charts()
 
         # 관심 종목 관련 뉴스
         st.markdown("---")
