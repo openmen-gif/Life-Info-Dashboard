@@ -70,6 +70,15 @@ def render_trend_with_stats(history: list, unit: str = "", decimals: int = 2,
     c5.metric("기간 등락", f"{total_change:+{fmt}} ({total_pct:+.1f}%)")
 
 
+def render_line_tight(history: list, decimals: int = 2, height: int = 300,
+                      dtick: float | None = None) -> None:
+    """history=[{"Date","Close"}...] → Y축 데이터 범위 밀착 라인차트 (통계 행 없음).
+
+    st.line_chart 대체용 — 모든 지표 추이 차트의 표준."""
+    render_trend_with_stats(history, unit="", decimals=decimals, dtick=dtick,
+                            height=height, show_stats=False)
+
+
 def render_normalized_compare(series_map: dict, caption: str, height: int = 340) -> None:
     """{라벨: [{"Date","Close"}...]} → 시작일=100 정규화 상대 변화율 비교 차트.
 

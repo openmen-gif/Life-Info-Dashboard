@@ -10,6 +10,7 @@ import streamlit as st
 import datetime
 import pandas as pd
 from utils.css_loader import apply_custom_css
+from utils.charts import render_line_tight, render_normalized_compare
 from utils.data_fetcher import (
     fetch_stock_data, fetch_kr_index, fetch_news_search,
     fetch_youtube_search, fetch_web_search,
@@ -119,8 +120,7 @@ def _render_chart_with_stats(symbol: str, name: str, period: str):
         st.warning(f"{name} 차트 데이터를 가져오지 못했습니다.")
         return
 
-    df = pd.DataFrame(d["history"])
-    st.line_chart(df.set_index("Date")["Close"])
+    render_line_tight(d["history"])
 
     prices = [r["Close"] for r in d["history"]]
     if prices:
@@ -204,8 +204,7 @@ with tab_kr:
             st.markdown(f"#### 📈 {name} 추이")
             kr_hist = fetch_kr_index(code, period=kr_period)
             if kr_hist.get("ok") and kr_hist.get("history"):
-                df = pd.DataFrame(kr_hist["history"])
-                st.line_chart(df.set_index("Date")["Close"])
+                render_line_tight(kr_hist["history"])
                 prices = [r["Close"] for r in kr_hist["history"]]
                 if prices:
                     avg_price = sum(prices) / len(prices)
@@ -291,20 +290,10 @@ with tab_compare:
         kr_d_chart = fetch_stock_data(kr_sym, period=cmp_period)
         if (kr_d_chart.get("ok") and us_d.get("ok")
                 and kr_d_chart.get("history") and us_d.get("history")):
-            kr_prices = [r["Close"] for r in kr_d_chart["history"]]
-            us_prices = [r["Close"] for r in us_d["history"]]
-            min_len = min(len(kr_prices), len(us_prices))
-            if min_len > 1 and kr_prices[0] and us_prices[0]:
-                kr_norm = [p / kr_prices[0] * 100 for p in kr_prices[:min_len]]
-                us_norm = [p / us_prices[0] * 100 for p in us_prices[:min_len]]
-                dates = [r["Date"] for r in kr_d_chart["history"][:min_len]]
-                df_cmp = pd.DataFrame({
-                    "Date": dates,
-                    kr_name: kr_norm,
-                    us_name: us_norm,
-                }).set_index("Date")
-                st.line_chart(df_cmp)
-                st.caption("※ 시작일 = 100 기준 정규화 비교 (ETF 기반 차트)")
+            render_normalized_compare(
+                {kr_name: kr_d_chart["history"], us_name: us_d["history"]},
+                "※ 시작일 = 100 기준 정규화 비교 (ETF 기반 차트) · Y축은 데이터 범위에 맞춤",
+            )
         st.markdown("---")
 
     # 종합 비교 테이블
@@ -415,8 +404,7 @@ with tab_watchlist:
             d = fetch_stock_data(sym, period=wl_period)
             if d.get("ok") and d.get("history"):
                 st.markdown(f"**{sym}**")
-                df = pd.DataFrame(d["history"])
-                st.line_chart(df.set_index("Date")["Close"])
+                render_line_tight(d["history"])
 
         # 관심 종목 뉴스
         st.markdown("---")

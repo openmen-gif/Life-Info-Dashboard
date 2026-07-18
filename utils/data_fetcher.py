@@ -706,7 +706,7 @@ def _fetch_traffic_local() -> list[dict]:
 
 # ── API Calls (Backend) and Public Functions ───────────────────────────────
 
-@st.cache_data(ttl=300, show_spinner=False)
+@st.cache_data(ttl=900, show_spinner=False)
 def _fetch_weather_cached(city: str, api_key: Optional[str]) -> dict:
     """캐시 가능한 실제 호출 — 실패 결과는 캐시되지 않도록 호출부에서 분기."""
     eng_city = KOR_CITY_MAP.get(city.strip(), city.strip())
@@ -750,7 +750,7 @@ _NEWS_CAT_QUERY = {
     "생활": "생활 사회 날씨 건강 뉴스",
 }
 
-@st.cache_data(ttl=900, show_spinner=False)
+@st.cache_data(ttl=3600, show_spinner=False)
 def fetch_news(category: str = "종합", limit: int = 10) -> list[dict]:
     """Fetch news: DDG + Google RSS 병합 (부족하면 보충)."""
     if IS_API_MODE:
@@ -953,7 +953,7 @@ def _fetch_web_ddg(query: str, limit: int = 10, timelimit: str | None = None) ->
         return []
 
 
-@st.cache_data(ttl=900, show_spinner=False)
+@st.cache_data(ttl=3600, show_spinner=False)
 def fetch_web_search(query: str, limit: int = 10, timelimit: str = "w", sort_by_date: bool = True) -> list[dict]:
     """Fetch web search results. DuckDuckGo first, then RSS fallback.
 
@@ -1597,7 +1597,7 @@ def _yt_search_ddg(query: str, limit: int, youtube_only: bool = False,
     return items
 
 
-@st.cache_data(ttl=900, show_spinner=False)
+@st.cache_data(ttl=3600, show_spinner=False)
 def _yt_search_api(query: str, limit: int = 12, sort_by_date: bool = False) -> list[dict]:
     """YouTube Data API v3 검색 — 키(HAS_YOUTUBE_API) 있을 때만 동작, 없으면 [].
 
@@ -1660,7 +1660,7 @@ def fetch_youtube_search(query: str, limit: int = 12, timelimit: str | None = No
     return result
 
 
-@st.cache_data(ttl=1800, show_spinner=False)
+@st.cache_data(ttl=3600, show_spinner=False)
 def _fetch_youtube_cached(query: str, limit: int = 12, timelimit: str | None = None) -> list[dict]:
     """실제 수집: Data API(키) → YouTube 페이지 파싱 → RSS → DDG (4단계 병합).
 
@@ -1727,7 +1727,7 @@ def _fetch_youtube_cached(query: str, limit: int = 12, timelimit: str | None = N
 fetch_youtube_search.clear = _fetch_youtube_cached.clear
 
 
-@st.cache_data(ttl=900, show_spinner=False)
+@st.cache_data(ttl=3600, show_spinner=False)
 def fetch_news_search(query: str, limit: int = 10, timelimit: str = "m") -> list[dict]:
     """Fetch news search results. DuckDuckGo first (better snippets), then RSS fallback.
 

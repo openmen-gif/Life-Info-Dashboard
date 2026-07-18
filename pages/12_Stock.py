@@ -4,7 +4,7 @@ import streamlit as st
 import pandas as pd
 import datetime
 from utils.css_loader import apply_custom_css
-from utils.charts import render_trend_with_stats, render_normalized_compare
+from utils.charts import render_trend_with_stats, render_normalized_compare, render_line_tight
 from utils.data_fetcher import fetch_stock_data, fetch_kr_index, fetch_news_search, fetch_web_search, fetch_youtube_search, build_trend_for_query
 from utils.report_downloader import render_download_buttons
 
@@ -303,9 +303,7 @@ with tab_watchlist:
             d = fetch_stock_data(sym, period=wl_period)
             if d.get("ok") and d.get("history"):
                 st.markdown(f"**{sym}**")
-                df = pd.DataFrame(d["history"])
-                df["Date"] = pd.to_datetime(df["Date"])
-                st.line_chart(df.set_index("Date")["Close"])
+                render_line_tight(d["history"])
 
         # 관심 종목 관련 뉴스
         st.markdown("---")

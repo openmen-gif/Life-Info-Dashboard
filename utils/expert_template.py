@@ -3,6 +3,7 @@ import datetime
 import re
 from collections import Counter
 import pandas as pd
+from utils.charts import render_line_tight
 from utils.data_fetcher import fetch_web_search, fetch_news_search, fetch_youtube_search
 from utils.report_downloader import render_download_buttons
 
@@ -349,8 +350,7 @@ def render_expert_page(
         first_sym = ticker_items[0][0]
         d = fetch_stock_data(first_sym, period="1mo")
         if d.get("ok") and d.get("history"):
-            df_chart = pd.DataFrame(d["history"])
-            st.line_chart(df_chart.set_index("Date")["Close"])
+            render_line_tight(d["history"])
             prices = [r["Close"] for r in d["history"]]
             if prices:
                 sc1, sc2, sc3 = st.columns(3)
