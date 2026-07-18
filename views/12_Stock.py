@@ -4,7 +4,7 @@ import streamlit as st
 import pandas as pd
 import datetime
 from utils.css_loader import apply_custom_css
-from utils.charts import render_trend_with_stats, render_normalized_compare, render_line_tight
+from utils.charts import render_trend_with_stats, render_normalized_compare, render_line_tight, slice_history
 from utils.data_fetcher import fetch_stock_data, fetch_kr_index, fetch_news_search, fetch_web_search, fetch_youtube_search, build_trend_for_query
 from utils.report_downloader import render_download_buttons
 
@@ -92,19 +92,21 @@ def _render_index_metrics(indices: dict, use_naver: bool = False):
 
 
 def _render_index_chart(symbol: str, name: str, period: str = "1mo"):
-    """지수 차트 + 통계 (미국 지수용 — yfinance). Y축은 데이터 범위 밀착 자동."""
-    data = fetch_stock_data(symbol, period=period)
+    """지수 차트 + 통계 (미국 지수용 — yfinance). Y축 밀착 자동.
+    1년치를 1회만 조회(캐시)하고 기간은 로컬 슬라이스 — 기간 전환 즉시 반응."""
+    data = fetch_stock_data(symbol, period="1y")
     if data.get("ok") and data.get("history"):
-        render_trend_with_stats(data["history"], unit="", decimals=2)
+        render_trend_with_stats(slice_history(data["history"], period), unit="", decimals=2)
     else:
         st.warning(f"{name} 차트 데이터를 가져오지 못했습니다.")
 
 
 def _render_kr_index_chart(code: str, name: str, period: str = "1mo"):
-    """국내 지수 차트 + 통계 (네이버 금융 API, 장애 시 yfinance 폴백). Y축 밀착 자동."""
-    data = fetch_kr_index(code, period=period)
+    """국내 지수 차트 + 통계 (네이버 금융 API, 장애 시 yfinance 폴백). Y축 밀착 자동.
+    1년치 1회 조회 후 로컬 슬라이스."""
+    data = fetch_kr_index(code, period="1y")
     if data.get("ok") and data.get("history"):
-        render_trend_with_stats(data["history"], unit="", decimals=2)
+        render_trend_with_stats(slice_history(data["history"], period), unit="", decimals=2)
     else:
         st.warning(f"{name} 차트 데이터를 가져오지 못했습니다.")
 
@@ -207,7 +209,7 @@ def _compare_section():
 
     for kr_sym, kr_name, us_sym, us_name in compare_pairs:
         st.markdown(f"### {kr_name} vs {us_name}")
-        us_d = fetch_stock_data(us_sym, period=period_cmp)
+        us_d = fetch_stock_data(us_sym, period="1y")  # 1y 1회 조회 → 로컬 슬라이스
         kr_idx = fetch_kr_index(kr_name)  # 실제 지수값 (네이버 금융)
 
         c1, c2 = st.columns(2)
@@ -225,10 +227,11 @@ def _compare_section():
                 st.metric(f"🇺🇸 {us_name}", "N/A")
 
         # 정규화 차트 (ETF 기반, 시작점=100 기준) — Y축은 데이터 범위 밀착 자동
-        kr_d_chart = fetch_stock_data(kr_sym, period=period_cmp)
+        kr_d_chart = fetch_stock_data(kr_sym, period="1y")
         if kr_d_chart.get("ok") and us_d.get("ok") and kr_d_chart.get("history") and us_d.get("history"):
             render_normalized_compare(
-                {kr_name: kr_d_chart["history"], us_name: us_d["history"]},
+                {kr_name: slice_history(kr_d_chart["history"], period_cmp),
+                 us_name: slice_history(us_d["history"], period_cmp)},
                 "※ 시작일 = 100 기준 정규화 비교 (ETF 기반 차트) · Y축은 데이터 범위에 맞춤",
             )
         st.markdown("---")
@@ -313,10 +316,10 @@ with tab_watchlist:
             st.markdown("### 📈 관심 종목 차트")
             wl_period = st.selectbox("차트 기간", ["5d", "1mo", "3mo", "6mo", "1y"], index=1, key="wl_period")
             for sym in st.session_state.watchlist:
-                d = fetch_stock_data(sym, period=wl_period)
+                d = fetch_stock_data(sym, period="1y")  # 1y 1회 조회 → 로컬 슬라이스
                 if d.get("ok") and d.get("history"):
                     st.markdown(f"**{sym}**")
-                    render_line_tight(d["history"])
+                    render_line_tight(slice_history(d["history"], wl_period))
 
         _watchlist_charts()
 

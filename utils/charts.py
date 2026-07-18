@@ -18,6 +18,18 @@ GRID_SOFT = "rgba(255,255,255,0.04)"
 _REF_LINE = "rgba(255,255,255,0.35)"
 
 
+_PERIOD_POINTS = {"5d": 5, "1mo": 22, "3mo": 66, "6mo": 126, "1y": 10000}
+
+
+def slice_history(history: list, period: str) -> list:
+    """1년치 일별 history를 기간 코드로 로컬 슬라이스 — 기간 전환을 원격 재조회 없이 즉시 처리.
+
+    사용 패턴: fetch는 항상 period="1y"로 1회(캐시) → 화면 기간은 이 함수로 자름."""
+    if not history:
+        return history
+    return history[-_PERIOD_POINTS.get(period, 22):]
+
+
 def nice_dtick(vmin: float, vmax: float) -> float:
     """Y축 눈금 간격을 1-2-5 계열로 산정 (범위/6 기준) — 변동 폭이 읽히는 간격 보장."""
     rng = max(vmax - vmin, 1e-9)

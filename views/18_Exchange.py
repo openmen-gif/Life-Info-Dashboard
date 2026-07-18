@@ -7,6 +7,7 @@ from utils.css_loader import apply_custom_css
 from utils.charts import (
     render_trend_with_stats as _render_trend_with_stats,
     render_normalized_compare as _render_normalized_compare,
+    slice_history as _slice_history,
 )
 from utils.data_fetcher import (
     fetch_exchange_rates, fetch_stock_data, fetch_fx_history,
@@ -43,7 +44,8 @@ def _fx_trend_section():
     fx_period = st.selectbox(
         "차트 기간", ["5d", "1mo", "3mo", "6mo", "1y"], index=1, key="fx_trend_period"
     )
-    fx_hist = fetch_fx_history(("KRW", "EUR", "JPY", "CNY"), period=fx_period)
+    # 1년치 1회 조회(1시간 캐시) → 기간 전환은 로컬 슬라이스로 즉시 반응
+    fx_hist = fetch_fx_history(("KRW", "EUR", "JPY", "CNY"), period="1y")
     if fx_hist.get("ok"):
         # (코드, 라벨, 단위, 소수, Y축 눈금) — KRW는 10원 간격 고정, 나머지 자동(1-2-5 계열)
         _FX_TREND = [
@@ -57,13 +59,14 @@ def _fx_trend_section():
             with _tab:
                 st.markdown(f"#### 📈 {label} 추이")
                 _render_trend_with_stats(
-                    fx_hist["history"].get(code, []), unit=unit, decimals=dec, dtick=tick
+                    _slice_history(fx_hist["history"].get(code, []), fx_period),
+                    unit=unit, decimals=dec, dtick=tick
                 )
         st.caption("※ ECB 기준 환율(Frankfurter), 영업일 1회 갱신 · 실시간 값은 상단 카드 참조")
 
         # ── 통화 비교 — 상대 변화율 (주식 '국장 vs 미장'과 동일 방식) ──
         st.markdown("### 📊 통화 비교 — 상대 변화율")
-        _fx_cmp = {label: fx_hist["history"].get(code, [])
+        _fx_cmp = {label: _slice_history(fx_hist["history"].get(code, []), fx_period)
                    for code, label, _u, _d, _t in _FX_TREND}
         _render_normalized_compare(
             _fx_cmp, "※ 시작일 = 100 기준 정규화 비교 · 기간은 상단 '차트 기간' 선택을 따릅니다"
@@ -83,8 +86,8 @@ def _oil_trend_section():
     for _tab, (symbol, (name, icon)) in zip(oil_trend_tabs, OIL_INDICES.items()):
         with _tab:
             st.markdown(f"#### {icon} {name} 추이")
-            d = fetch_stock_data(symbol, period=oil_period)
-            _hist = d.get("history", []) if d.get("ok") else []
+            d = fetch_stock_data(symbol, period="1y")  # 1y 1회 조회 → 로컬 슬라이스
+            _hist = _slice_history(d.get("history", []) if d.get("ok") else [], oil_period)
             _oil_cmp[name] = _hist
             _render_trend_with_stats(_hist, unit="$", decimals=2)
 
