@@ -207,7 +207,12 @@ def _render_video_card(v: dict, show_desc: bool = False):
         else:
             meta_parts.append(f"👁 {vc:,}회")
     if v.get("published"):
-        meta_parts.append(f"📅 {v['published'][:10]}")
+        # 소스별 포맷 혼재(ISO·RFC822) — 파싱해 YYYY-MM-DD로 통일 표기
+        _ts = published_ts(v)
+        if _ts:
+            meta_parts.append(f"📅 {datetime.datetime.fromtimestamp(_ts).strftime('%Y-%m-%d')}")
+        else:
+            meta_parts.append(f"📅 {str(v['published'])[:10]}")
     if meta_parts:
         st.caption(" | ".join(meta_parts))
 
@@ -230,16 +235,30 @@ def render_youtube_section(query: str, limit: int = 12, per_page: int = 4,
         sort: default sort — "views" (조회수순) or "latest" (최신순)
     """
     # 지연 로드 게이트 — 유튜브 수집(수 초)은 페이지 첫 로딩의 최대 지연 요인이라
-    # 버튼 클릭 시에만 수집한다 (세션 내 유지, D단계 최적화)
+    # 버튼 클릭 시에만 표시한다 (세션 내 유지, D단계 최적화)
+    _tl = "d" if sort == "latest" else None
     _yt_gate = f"yt_loaded_{_qkey(query)}"
     if not st.session_state.get(_yt_gate):
-        st.caption("페이지를 빠르게 열기 위해 영상 목록은 버튼을 누를 때 불러옵니다.")
-        if st.button("관련 영상 불러오기", key=f"{_yt_gate}_btn", use_container_width=True):
+        # 백그라운드 프리페치 — 첫 로딩은 막지 않되, 수집·1차 정렬 대상 데이터를
+        # 미리 캐시에 데워 버튼 클릭 시 즉시 표시되게 한다 (세션당 1회)
+        _warm_key = f"yt_warm_{_qkey(query)}"
+        if not st.session_state.get(_warm_key):
+            st.session_state[_warm_key] = True
+            import threading
+
+            def _warm(q=query, lm=limit, tl=_tl):
+                try:
+                    fetch_youtube_search(q, limit=lm, timelimit=tl)
+                except Exception:
+                    pass
+
+            threading.Thread(target=_warm, daemon=True).start()
+        st.caption("페이지를 빠르게 열기 위해 영상 목록은 버튼을 누를 때 표시합니다 (백그라운드에서 미리 준비 중).")
+        if st.button("관련 영상 보기", key=f"{_yt_gate}_btn", use_container_width=True):
             st.session_state[_yt_gate] = True
             st.rerun()
         return []
 
-    _tl = "d" if sort == "latest" else None
     videos = fetch_youtube_search(query, limit=limit, timelimit=_tl)
     if not videos:
         _show_empty_state("관련 영상을 찾지 못했습니다.")
