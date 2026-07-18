@@ -3,7 +3,7 @@ import streamlit as st
 import datetime
 from utils.css_loader import apply_custom_css
 from utils.charts import render_temp_hourly
-from utils.data_fetcher import fetch_weather, fetch_news, fetch_traffic_status, fetch_stock_data, fetch_weather_series
+from utils.data_fetcher import fetch_weather, fetch_news, fetch_traffic_status, fetch_stock_data, fetch_stock_data_long, fetch_weather_series
 from utils.ui_components import render_weather_card, render_news_summary, render_traffic_summary
 from utils.report_downloader import render_download_buttons
 
@@ -69,8 +69,9 @@ _m1, _m2, _m3 = st.columns([1, 1, 2], gap="small")
 
 with _m1:
     with st.container(border=True):
-        _fx = fetch_stock_data("KRW=X", "1mo")
-        if _fx.get("ok"):
+        # [주석] 1mo 이력 추이는 6시간 캐시 fetch_stock_data_long을 사용해 무한 대기 멈춤을 방지합니다.
+        _fx = fetch_stock_data_long("KRW=X", "1mo")
+        if _fx and _fx.get("ok"):
             _render_trend_tile("환율 USD/KRW", f"{_fx['price']:,.0f}원",
                                f"{_fx['change_pct']:+.2f}%", _fx.get("history", []))
         else:
@@ -79,8 +80,9 @@ with _m1:
 
 with _m2:
     with st.container(border=True):
-        _oil = fetch_stock_data("CL=F", "1mo")
-        if _oil.get("ok"):
+        # [주석] 1mo 이력 추이는 6시간 캐시 fetch_stock_data_long을 사용해 무한 대기 멈춤을 방지합니다.
+        _oil = fetch_stock_data_long("CL=F", "1mo")
+        if _oil and _oil.get("ok"):
             _render_trend_tile("유가 WTI", f"${_oil['price']:,.2f}",
                                f"{_oil['change_pct']:+.2f}%", _oil.get("history", []))
         else:
