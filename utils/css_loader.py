@@ -65,14 +65,18 @@ def apply_custom_css():
         font-variant-numeric: tabular-nums;
     }
 
-    /* 보더 컨테이너 — 글래스 카드 */
-    [data-testid="stVerticalBlockBorderWrapper"] {
+    /* 글래스 타일 — .tile-marker를 품은 보더 컨테이너만 opt-in.
+       (Streamlit 1.42는 테두리 없는 일반 컨테이너도 같은 wrapper를 쓰므로
+        일괄 적용하면 패딩 없는 유령 박스가 생김 — 마커 방식으로 한정) */
+    .tile-marker { display: none; }
+    /* :not(...)으로 조상 wrapper 제외 — 마커를 직접 품은 최근접 wrapper만 칠한다 */
+    [data-testid="stVerticalBlockBorderWrapper"]:has(.tile-marker):not(:has([data-testid="stVerticalBlockBorderWrapper"] .tile-marker)) {
         background: var(--panel);
         border-radius: var(--radius);
     }
-    /* 카드 안의 메트릭은 이중 카드 방지 — 평면화 */
-    [data-testid="stVerticalBlockBorderWrapper"] .stMetric,
-    [data-testid="stVerticalBlockBorderWrapper"] [data-testid="stMetric"] {
+    /* 글래스 타일 안의 메트릭은 이중 카드 방지 — 평면화 */
+    [data-testid="stVerticalBlockBorderWrapper"]:has(.tile-marker):not(:has([data-testid="stVerticalBlockBorderWrapper"] .tile-marker)) .stMetric,
+    [data-testid="stVerticalBlockBorderWrapper"]:has(.tile-marker):not(:has([data-testid="stVerticalBlockBorderWrapper"] .tile-marker)) [data-testid="stMetric"] {
         background: transparent;
         border: 0;
         border-radius: 0;

@@ -8,6 +8,12 @@ from utils.report_downloader import render_download_buttons
 
 apply_custom_css()
 
+
+def _mark_tile():
+    """글래스 타일 opt-in 마커 — css_loader의 :has(.tile-marker) 규칙이 참조."""
+    st.markdown('<span class="tile-marker"></span>', unsafe_allow_html=True)
+
+
 st.title("생활정보 대시보드")
 st.caption(f"{datetime.datetime.now().strftime('%Y년 %m월 %d일 %A')}")
 
@@ -18,11 +24,13 @@ with col1:
     with st.container(border=True):
         weather = fetch_weather()
         render_weather_card(weather)
+        _mark_tile()
 
 with col2:
     with st.container(border=True):
         news = fetch_news("종합", limit=5)
         render_news_summary(news, limit=5)
+        _mark_tile()
 
 # ── 벤토 2행: 환율·유가 미니 타일(경향 그래프 포함) + 실시간 교통(와이드) ──
 _ACCENT = "#7C9CFF"  # css_loader :root --accent와 동일 값 유지 (plotly는 CSS 변수 접근 불가)
@@ -56,6 +64,7 @@ with _m1:
                                f"{_fx['change_pct']:+.2f}%", _fx.get("history", []))
         else:
             st.metric("환율 USD/KRW", "—", help="데이터 로딩 실패 — 잠시 후 새로고침")
+        _mark_tile()
 
 with _m2:
     with st.container(border=True):
@@ -65,11 +74,13 @@ with _m2:
                                f"{_oil['change_pct']:+.2f}%", _oil.get("history", []))
         else:
             st.metric("유가 WTI", "—", help="데이터 로딩 실패 — 잠시 후 새로고침")
+        _mark_tile()
 
 with _m3:
     with st.container(border=True):
         traffic = fetch_traffic_status()
         render_traffic_summary(traffic, limit=3)
+        _mark_tile()
 
 _tc1, _tc2, _tc3 = st.columns(3)
 with _tc1:
@@ -162,3 +173,4 @@ for i, (cat_title, page_items) in enumerate(_categories):
                 except Exception:
                     # page_link 실패(미등록 페이지 등) 시 텍스트 표시로 폴백
                     st.markdown(f"<small style='color:var(--muted)'>{icon} {label}</small>", unsafe_allow_html=True)
+            _mark_tile()
