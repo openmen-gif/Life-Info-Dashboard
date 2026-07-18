@@ -513,7 +513,7 @@ def _fetch_weather_open_meteo(city: str) -> Optional[dict]:
     return None
 
 
-@st.cache_data(ttl=43200, show_spinner=False)
+@st.cache_data(ttl=3600, show_spinner=False)
 def fetch_weather_series(city: str = "Seoul") -> dict:
     """Open-Meteo 한 번 호출로 기온 추이(지난 7일) + 예보(7일) 시계열 조회.
 
@@ -816,7 +816,7 @@ _NEWS_CAT_QUERY = {
     "생활": "생활 사회 날씨 건강 뉴스",
 }
 
-@st.cache_data(ttl=7200, show_spinner=False)
+@st.cache_data(ttl=1800, show_spinner=False)
 def fetch_news(category: str = "종합", limit: int = 10) -> list[dict]:
     """Fetch news: DDG + Google RSS 병합 (부족하면 보충)."""
     if IS_API_MODE:
@@ -1019,7 +1019,7 @@ def _fetch_web_ddg(query: str, limit: int = 10, timelimit: str | None = None) ->
         return []
 
 
-@st.cache_data(ttl=7200, show_spinner=False)
+@st.cache_data(ttl=1800, show_spinner=False)
 def fetch_web_search(query: str, limit: int = 10, timelimit: str = "w", sort_by_date: bool = True) -> list[dict]:
     """Fetch web search results. DuckDuckGo first, then RSS fallback.
 
@@ -1060,7 +1060,7 @@ def fetch_web_search(query: str, limit: int = 10, timelimit: str = "w", sort_by_
         results.sort(key=lambda v: v.get("published", "") or "", reverse=True)
     return results
 
-@st.cache_data(ttl=1800, show_spinner=False)
+@st.cache_data(ttl=300, show_spinner=False)
 def fetch_exchange_rates() -> dict:
     """Fetch real-time exchange rates from open.er-api.com (free, no key)."""
     try:
@@ -1107,7 +1107,7 @@ def _parse_frankfurter_timeseries(payload: dict, symbols) -> dict:
     return history
 
 
-@st.cache_data(ttl=43200, show_spinner=False)
+@st.cache_data(ttl=1800, show_spinner=False)
 def fetch_fx_history(symbols: tuple = ("KRW", "EUR", "JPY", "CNY"),
                      period: str = "1mo") -> dict:
     """Frankfurter(ECB)로 USD 기준 환율 히스토리 조회.
@@ -1145,7 +1145,7 @@ def _kr_period_to_range(period: str) -> str:
     return {"5d": "1W", "1mo": "1M", "3mo": "3M", "6mo": "6M", "1y": "1Y"}.get(period, "1M")
 
 
-@st.cache_data(ttl=43200, show_spinner=False)
+@st.cache_data(ttl=600, show_spinner=False)
 def fetch_kr_index(code: str = "KOSPI", period: str = "1mo") -> dict:
     """네이버 금융 API로 한국 지수(KOSPI/KOSDAQ) 실시간 + 히스토리 데이터 조회."""
     headers = {"User-Agent": "Mozilla/5.0"}
@@ -1236,7 +1236,7 @@ def fetch_kr_index(code: str = "KOSPI", period: str = "1mo") -> dict:
         return {"symbol": code, "ok": False}
 
 
-@st.cache_data(ttl=43200, show_spinner=False)
+@st.cache_data(ttl=600, show_spinner=False)
 def fetch_stock_data(symbol: str, period: str = "5d") -> dict:
     """Fetch stock/index data via yfinance (free, no key).
     Returns: {name, symbol, price, change, change_pct, history, ok}
@@ -1663,7 +1663,7 @@ def _yt_search_ddg(query: str, limit: int, youtube_only: bool = False,
     return items
 
 
-@st.cache_data(ttl=7200, show_spinner=False)
+@st.cache_data(ttl=1800, show_spinner=False)
 def _yt_search_api(query: str, limit: int = 12, sort_by_date: bool = False) -> list[dict]:
     """YouTube Data API v3 검색 — 키(HAS_YOUTUBE_API) 있을 때만 동작, 없으면 [].
 
@@ -1726,7 +1726,7 @@ def fetch_youtube_search(query: str, limit: int = 12, timelimit: str | None = No
     return result
 
 
-@st.cache_data(ttl=7200, show_spinner=False)
+@st.cache_data(ttl=1800, show_spinner=False)
 def _fetch_youtube_cached(query: str, limit: int = 12, timelimit: str | None = None) -> list[dict]:
     """실제 수집: Data API(키) → YouTube 페이지 파싱 → RSS → DDG (4단계 병합).
 
@@ -1793,7 +1793,7 @@ def _fetch_youtube_cached(query: str, limit: int = 12, timelimit: str | None = N
 fetch_youtube_search.clear = _fetch_youtube_cached.clear
 
 
-@st.cache_data(ttl=7200, show_spinner=False)
+@st.cache_data(ttl=1800, show_spinner=False)
 def fetch_news_search(query: str, limit: int = 10, timelimit: str = "m") -> list[dict]:
     """Fetch news search results. DuckDuckGo first (better snippets), then RSS fallback.
 
