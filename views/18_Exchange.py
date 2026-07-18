@@ -124,11 +124,27 @@ def _oil_trend_section():
 
     oil_period = st.selectbox("차트 기간", _periods, index=_default_idx, key="oil_trend_period_sel", on_change=_on_oil_period_change)
     oil_trend_tabs = st.tabs([name for _sym, (name, _icon) in OIL_INDICES.items()])
+    
+    # [주석] 유가 탭 전환 시 동기식 수집으로 인한 무한 멈춤(홀딩)을 방지하고자
+    #        모든 유가 지표를 ThreadPoolExecutor로 3초 타임아웃 한도 내에서 병렬 사전 수집합니다.
+    from concurrent.futures import ThreadPoolExecutor
+    oil_symbols = list(OIL_INDICES.keys())
+    with ThreadPoolExecutor(max_workers=min(len(oil_symbols), 8)) as executor:
+        futures = {executor.submit(fetch_stock_data_long, sym, "1y"): sym for sym in oil_symbols}
+        prefetched_oil = {}
+        for future in futures:
+            sym = futures[future]
+            try:
+                # [주석] 3초 경과 시 강제 차단 리턴 처리하여 시스템 먹통을 방지합니다.
+                prefetched_oil[sym] = future.result(timeout=3.0)
+            except Exception:
+                prefetched_oil[sym] = {"ok": False}
+
     _oil_cmp = {}
     for _tab, (symbol, (name, icon)) in zip(oil_trend_tabs, OIL_INDICES.items()):
         with _tab:
             st.markdown(f"#### {icon} {name} 추이")
-            d = fetch_stock_data_long(symbol, period="1y")  # 1y 1회 조회(6시간 장기 캐시) → 로컬 슬라이스
+            d = prefetched_oil.get(symbol, {"ok": False})
             _hist = _slice_history(d.get("history", []) if d.get("ok") else [], oil_period)
             _oil_cmp[name] = _hist
             _render_trend_with_stats(_hist, unit="$", decimals=2)
