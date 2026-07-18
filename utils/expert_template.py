@@ -314,8 +314,9 @@ def render_expert_page(
             fetch_web_search.clear()
             fetch_youtube_search.clear()
             if tickers:
-                from utils.data_fetcher import fetch_stock_data as _fsd
+                from utils.data_fetcher import fetch_stock_data as _fsd, fetch_stock_data_long as _fsdl
                 _fsd.clear()
+                _fsdl.clear()
             st.rerun()
     with col_period:
         _period_labels = ["1일", "1주일", "1개월", "3개월", "6개월", "1년", "2년", "3년"]
@@ -333,13 +334,14 @@ def render_expert_page(
 
     # ── 실시간 모니터링 (tickers) ─────────────────────────────────────────
     if tickers:
-        from utils.data_fetcher import fetch_stock_data
+        from utils.data_fetcher import fetch_stock_data, fetch_stock_data_long
 
         st.markdown(f"### 📊 {title} 실시간 지표")
         cols = st.columns(min(len(tickers), 4))
         ticker_items = list(tickers.items())
         for i, (symbol, name) in enumerate(ticker_items):
             with cols[i % len(cols)]:
+                # [주석] 상단 메트릭 카드는 5분 캐시(fetch_stock_data)를 타서 실시간성을 최고로 보장합니다.
                 d = fetch_stock_data(symbol, period="5d")
                 if d.get("ok"):
                     price_fmt = f"${d['price']:,.2f}" if not symbol.endswith((".KS", ".KQ")) else f"{d['price']:,.0f}"
@@ -369,10 +371,11 @@ def render_expert_page(
         
         # [주석] 탭 전환 시 동기식 순차 호출로 인한 프리즈를 예방하기 위해 
         #        모든 티커의 1y 데이터를 ThreadPoolExecutor를 사용해 동시 병렬 사전 수집합니다.
+        #        (이때 무거운 1y 데이터는 6시간 캐시 fetch_stock_data_long 을 사용합니다.)
         from concurrent.futures import ThreadPoolExecutor
         symbols = [sym for sym, _name in ticker_items]
         with ThreadPoolExecutor(max_workers=min(len(symbols), 8)) as executor:
-            futures = {executor.submit(fetch_stock_data, sym, "1y"): sym for sym in symbols}
+            futures = {executor.submit(fetch_stock_data_long, sym, "1y"): sym for sym in symbols}
             prefetched_results = {}
             for future in futures:
                 sym = futures[future]

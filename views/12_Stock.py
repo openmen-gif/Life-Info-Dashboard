@@ -5,7 +5,7 @@ import pandas as pd
 import datetime
 from utils.css_loader import apply_custom_css
 from utils.charts import render_trend_with_stats, render_normalized_compare, render_line_tight, slice_history
-from utils.data_fetcher import fetch_stock_data, fetch_kr_index, fetch_news_search, fetch_web_search, fetch_youtube_search, build_trend_for_query
+from utils.data_fetcher import fetch_stock_data, fetch_stock_data_long, fetch_kr_index, fetch_news_search, fetch_web_search, fetch_youtube_search, build_trend_for_query
 from utils.report_downloader import render_download_buttons
 
 apply_custom_css()
@@ -18,6 +18,7 @@ col_r, col_t = st.columns([1, 3])
 with col_r:
     if st.button("🔄 데이터 갱신", type="primary"):
         fetch_stock_data.clear()
+        fetch_stock_data_long.clear()
         fetch_news_search.clear()
         fetch_web_search.clear()
         fetch_youtube_search.clear()
@@ -93,8 +94,8 @@ def _render_index_metrics(indices: dict, use_naver: bool = False):
 
 def _render_index_chart(symbol: str, name: str, period: str = "1mo"):
     """지수 차트 + 통계 (미국 지수용 — yfinance). Y축 밀착 자동.
-    1년치를 1회만 조회(캐시)하고 기간은 로컬 슬라이스 — 기간 전환 즉시 반응."""
-    data = fetch_stock_data(symbol, period="1y")
+    1년치를 1회만 조회(6시간 장기 캐시)하고 기간은 로컬 슬라이스 — 기간 전환 즉시 반응."""
+    data = fetch_stock_data_long(symbol, period="1y")
     if data.get("ok") and data.get("history"):
         render_trend_with_stats(slice_history(data["history"], period), unit="", decimals=2)
     else:
@@ -258,7 +259,7 @@ def _compare_section():
 
     for kr_sym, kr_name, us_sym, us_name in compare_pairs:
         st.markdown(f"### {kr_name} vs {us_name}")
-        us_d = fetch_stock_data(us_sym, period="1y")  # 1y 1회 조회 → 로컬 슬라이스
+        us_d = fetch_stock_data_long(us_sym, period="1y")  # 1y 1회 조회(6시간 장기 캐시) → 로컬 슬라이스
         kr_idx = fetch_kr_index(kr_name)  # 실제 지수값 (네이버 금융)
 
         c1, c2 = st.columns(2)
@@ -276,7 +277,7 @@ def _compare_section():
                 st.metric(f"🇺🇸 {us_name}", "N/A")
 
         # 정규화 차트 (ETF 기반, 시작점=100 기준) — Y축은 데이터 범위 밀착 자동
-        kr_d_chart = fetch_stock_data(kr_sym, period="1y")
+        kr_d_chart = fetch_stock_data_long(kr_sym, period="1y")
         if kr_d_chart.get("ok") and us_d.get("ok") and kr_d_chart.get("history") and us_d.get("history"):
             render_normalized_compare(
                 {kr_name: slice_history(kr_d_chart["history"], period_cmp),
@@ -391,7 +392,7 @@ with tab_watchlist:
 
             wl_period = st.selectbox("차트 기간", _periods, index=_default_idx, key="wl_period_sel", on_change=_on_wl_period_change)
             for sym in st.session_state.watchlist:
-                d = fetch_stock_data(sym, period="1y")  # 1y 1회 조회 → 로컬 슬라이스
+                d = fetch_stock_data_long(sym, period="1y")  # 1y 1회 조회(6시간 장기 캐시) → 로컬 슬라이스
                 if d.get("ok") and d.get("history"):
                     st.markdown(f"**{sym}**")
                     render_line_tight(slice_history(d["history"], wl_period))

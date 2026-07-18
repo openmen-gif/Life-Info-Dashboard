@@ -1236,11 +1236,19 @@ def fetch_kr_index(code: str = "KOSPI", period: str = "1mo") -> dict:
         return {"symbol": code, "ok": False}
 
 
-@st.cache_data(ttl=600, show_spinner=False)
+@st.cache_data(ttl=300, show_spinner=False)
 def fetch_stock_data(symbol: str, period: str = "5d") -> dict:
     """Fetch stock/index data via yfinance (free, no key).
     Returns: {name, symbol, price, change, change_pct, history, ok}
     """
+
+@st.cache_data(ttl=21600, show_spinner=False)
+def fetch_stock_data_long(symbol: str, period: str = "1y") -> dict:
+    """[주석] 장기 추이(1y 등) 차트 분석용 전용 수집기.
+    일별 종가는 하루에 한 번만 갱신되므로 6시간(21600초) 장기 캐싱하여
+    야후 파이낸스 측의 IP 임시 차단을 완벽하게 봉쇄하고 로딩 스피드를 극대화합니다.
+    """
+    return fetch_stock_data(symbol, period=period)
     import math
     if not _yf:
         return {"symbol": symbol, "ok": False, "error": "yfinance not installed"}

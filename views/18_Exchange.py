@@ -10,7 +10,7 @@ from utils.charts import (
     slice_history as _slice_history,
 )
 from utils.data_fetcher import (
-    fetch_exchange_rates, fetch_stock_data, fetch_fx_history,
+    fetch_exchange_rates, fetch_stock_data, fetch_stock_data_long, fetch_fx_history,
     fetch_web_search, fetch_news_search, fetch_youtube_search,
 )
 from utils.report_downloader import render_download_buttons
@@ -27,6 +27,7 @@ with col_r:
         fetch_exchange_rates.clear()
         fetch_fx_history.clear()
         fetch_stock_data.clear()
+        fetch_stock_data_long.clear()
         fetch_news_search.clear()
         fetch_web_search.clear()
         fetch_youtube_search.clear()
@@ -127,7 +128,7 @@ def _oil_trend_section():
     for _tab, (symbol, (name, icon)) in zip(oil_trend_tabs, OIL_INDICES.items()):
         with _tab:
             st.markdown(f"#### {icon} {name} 추이")
-            d = fetch_stock_data(symbol, period="1y")  # 1y 1회 조회 → 로컬 슬라이스
+            d = fetch_stock_data_long(symbol, period="1y")  # 1y 1회 조회(6시간 장기 캐시) → 로컬 슬라이스
             _hist = _slice_history(d.get("history", []) if d.get("ok") else [], oil_period)
             _oil_cmp[name] = _hist
             _render_trend_with_stats(_hist, unit="$", decimals=2)
