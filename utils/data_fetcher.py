@@ -1763,18 +1763,33 @@ def _yt_search_api(query: str, limit: int = 12, sort_by_date: bool = False) -> l
         return []
 
 
-def fetch_youtube_search(query: str, limit: int = 12, timelimit: str | None = None) -> list[dict]:
-    """Fetch YouTube videos. 빈 결과는 캐시하지 않아 다음 렌더에서 재시도한다.
+# 빈 결과 쿨다운 — 수집이 전부 실패하는 환경(HF IP 차단)에서 프리페치·클릭이
+# 매번 12초 예산을 다시 태우는 것을 방지. 쿨다운 동안은 즉시 빈 응답, 이후 재시도.
+_YT_EMPTY_COOLDOWN: dict = {}
+_YT_EMPTY_TTL_SEC = 300.0
 
-    스크래핑(HF에서 flaky)이 일시적으로 []를 주면 캐시 고정 대신 재시도해 복구.
-    비어있지 않은 결과만 캐시(30분) → YouTube Data API 할당량 보호 + 속도.
+
+def fetch_youtube_search(query: str, limit: int = 12, timelimit: str | None = None) -> list[dict]:
+    """Fetch YouTube videos. 빈 결과는 캐시 대신 5분 쿨다운으로 관리한다.
+
+    - 성공(비어있지 않음): 30분 캐시 → 속도 + API 할당량 보호
+    - 실패(빈 결과): 캐시 고정 없이 5분 쿨다운 — 쿨다운 중 재호출은 즉시 [] 반환
+      (매 클릭 12초 재수집으로 멈춘 듯 보이던 문제 방지), 5분 후 자동 재시도
     """
+    import time as _time
+    _key = (query, limit, timelimit)
+    _ts = _YT_EMPTY_COOLDOWN.get(_key)
+    if _ts is not None and _time.monotonic() - _ts < _YT_EMPTY_TTL_SEC:
+        return []
     result = _fetch_youtube_cached(query, limit, timelimit)
     if not result:
+        _YT_EMPTY_COOLDOWN[_key] = _time.monotonic()
         try:
             _fetch_youtube_cached.clear()
         except Exception:
             pass
+    else:
+        _YT_EMPTY_COOLDOWN.pop(_key, None)
     return result
 
 
@@ -1793,11 +1808,29 @@ def _fetch_youtube_cached(query: str, limit: int = 12, timelimit: str | None = N
     # 총 시간 예산 — HF 등 차단 환경에서 백엔드 순회가 30초+ 늘어지는 것을 방지.
     # 예산 초과 시 남은 단계를 건너뛰고 지금까지 모인 결과로 즉시 응답한다.
     import time as _time
+    from concurrent.futures import ThreadPoolExecutor as _StageTPE
     _t0 = _time.monotonic()
     _BUDGET_SEC = 12.0
 
     def _over_budget() -> bool:
         return _time.monotonic() - _t0 > _BUDGET_SEC
+
+    def _run_stage(fn, *a, **kw):
+        """백엔드 1개를 잔여 예산 하드 타임아웃으로 실행.
+
+        예산 검사가 단계 '사이'에만 있으면 개별 백엔드가 내부에서 걸릴 때
+        (예: DDG 내부 재시도, 소켓 무한 대기) 천장을 관통한다 — 워커 스레드 +
+        result(timeout)으로 벽시계 상한을 강제하고, 초과 시 스레드는 버린다."""
+        remain = _BUDGET_SEC - (_time.monotonic() - _t0)
+        if remain <= 0.5:
+            return []
+        _ex = _StageTPE(max_workers=1)
+        try:
+            return _ex.submit(fn, *a, **kw).result(timeout=remain) or []
+        except Exception:
+            return []
+        finally:
+            _ex.shutdown(wait=False)
 
     def _merge(new_items):
         for it in new_items:
@@ -1809,17 +1842,11 @@ def _fetch_youtube_cached(query: str, limit: int = 12, timelimit: str | None = N
                 existing_ids.add(key)
 
     # 0차: YouTube Data API (키 있으면 최우선 — HF 스크래핑 차단 대안)
-    try:
-        _merge(_yt_search_api(query, limit, sort_by_date=sort_by_date))
-    except Exception:
-        pass
+    _merge(_run_stage(_yt_search_api, query, limit, sort_by_date=sort_by_date))
 
     # 1차: YouTube 검색 페이지 직접 파싱
     if not _over_budget():
-        try:
-            _merge(_yt_search_scrape(query, limit, sort_by_date=sort_by_date))
-        except Exception:
-            pass
+        _merge(_run_stage(_yt_search_scrape, query, limit, sort_by_date=sort_by_date))
 
     def _enough() -> bool:
         # 도메인 필터 후에도 limit 만큼 남으면 충분 → 느린 후속 단계 생략(표시 건수 보존).
@@ -1828,17 +1855,11 @@ def _fetch_youtube_cached(query: str, limit: int = 12, timelimit: str | None = N
     # 2차: YouTube 채널 RSS — 1차(스크래핑)로 부족할 때만. RSS 가 ~2초로 가장 느려,
     # 1차가 보통 limit 을 채우면 이 단계를 건너뛰어 영상 fetch 를 ~2.6s 단축한다.
     if not _enough() and not _over_budget():
-        try:
-            _merge(_yt_search_rss(query, limit))
-        except Exception:
-            pass
+        _merge(_run_stage(_yt_search_rss, query, limit))
 
     # 3차: DDG videos — 여전히 부족할 때만 (다양한 플랫폼 + 최신 영상 보강)
     if not _enough() and not _over_budget():
-        try:
-            _merge(_yt_search_ddg(query, limit, timelimit=timelimit))
-        except Exception:
-            pass
+        _merge(_run_stage(_yt_search_ddg, query, limit, timelimit=timelimit))
 
     if all_items:
         filtered = _filter_by_domain(all_items, domain, title_key="title")
@@ -1861,9 +1882,13 @@ def _fetch_youtube_cached(query: str, limit: int = 12, timelimit: str | None = N
 
 
 # 여러 페이지의 '데이터 갱신' 버튼이 fetch_youtube_search.clear() 를 호출한다.
-# 래퍼로 분리하며 @st.cache_data 가 _fetch_youtube_cached 로 옮겨가 .clear() 가
-# 사라졌으므로, 실제 캐시의 clear 를 래퍼에 위임 부착해 호환을 유지한다.
-fetch_youtube_search.clear = _fetch_youtube_cached.clear
+# 실제 캐시 clear + 빈 결과 쿨다운 해제를 함께 수행해야 수동 갱신이 즉시 재시도된다.
+def _yt_clear_all():
+    _YT_EMPTY_COOLDOWN.clear()
+    _fetch_youtube_cached.clear()
+
+
+fetch_youtube_search.clear = _yt_clear_all
 
 
 @st.cache_data(ttl=1800, show_spinner=False)
