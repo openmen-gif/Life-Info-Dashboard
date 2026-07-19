@@ -1764,9 +1764,18 @@ def _yt_search_api(query: str, limit: int = 12, sort_by_date: bool = False) -> l
 
 
 # 빈 결과 쿨다운 — 수집이 전부 실패하는 환경(HF IP 차단)에서 프리페치·클릭이
-# 매번 12초 예산을 다시 태우는 것을 방지. 쿨다운 동안은 즉시 빈 응답, 이후 재시도.
+# 매번 예산을 다시 태우는 것을 방지. 쿨다운 동안은 즉시 빈 응답, 이후 재시도.
 _YT_EMPTY_COOLDOWN: dict = {}
 _YT_EMPTY_TTL_SEC = 300.0
+
+# 수집 예산(초) — 경로별 분리. 클릭(대화형)은 12초로 멈춤 방지, 백그라운드 웜은
+# 45초로 'HF에서 느리지만 결국 성공'하는 수집을 살린다(예전 무제한 시절의 성공률 복원).
+# threading.local: 캐시 키에 영향 없이 같은 캐시 엔트리를 채우기 위해 인자가 아닌
+# 스레드 로컬로 전달한다.
+import threading as _yt_threading
+_YT_BUDGET_LOCAL = _yt_threading.local()
+_YT_BUDGET_DEFAULT_SEC = 12.0
+_YT_BUDGET_WARM_SEC = 45.0
 
 
 def warm_youtube_search(query: str, limit: int = 12, timelimit: str | None = None,
@@ -1778,7 +1787,12 @@ def warm_youtube_search(query: str, limit: int = 12, timelimit: str | None = Non
     import time as _time
     for i in range(retries):
         try:
-            r = _fetch_youtube_cached(query, limit, timelimit)
+            # 웜 경로는 사용자가 기다리지 않으므로 넉넉한 예산으로 수집(성공률 우선)
+            _YT_BUDGET_LOCAL.budget = _YT_BUDGET_WARM_SEC
+            try:
+                r = _fetch_youtube_cached(query, limit, timelimit)
+            finally:
+                _YT_BUDGET_LOCAL.budget = _YT_BUDGET_DEFAULT_SEC
             if r:
                 _YT_EMPTY_COOLDOWN.pop((query, limit, timelimit), None)
                 return
@@ -1832,7 +1846,8 @@ def _fetch_youtube_cached(query: str, limit: int = 12, timelimit: str | None = N
     import time as _time
     from concurrent.futures import ThreadPoolExecutor as _StageTPE
     _t0 = _time.monotonic()
-    _BUDGET_SEC = 12.0
+    # 경로별 예산: 클릭(기본 12초) vs 백그라운드 웜(45초 — 스레드 로컬로 상향)
+    _BUDGET_SEC = getattr(_YT_BUDGET_LOCAL, "budget", _YT_BUDGET_DEFAULT_SEC)
 
     def _over_budget() -> bool:
         return _time.monotonic() - _t0 > _BUDGET_SEC
