@@ -1777,6 +1777,37 @@ _YT_BUDGET_LOCAL = _yt_threading.local()
 _YT_BUDGET_DEFAULT_SEC = 12.0
 _YT_BUDGET_WARM_SEC = 45.0
 
+# 웜 진행 중 표시 — st.cache_data는 동일 키 동시 호출을 잠금으로 직렬화하므로,
+# 웜(45초)이 계산 중일 때 클릭이 같은 키를 부르면 웜이 끝날 때까지 같이 기다린다.
+# 클릭 경로는 이 플래그를 먼저 확인해 '수집 중' 안내로 즉시 응답해야 한다.
+_YT_INFLIGHT: set = set()
+_YT_INFLIGHT_LOCK = _yt_threading.Lock()
+
+# 마지막 성공 목록(프로세스 메모리) — 수집이 전면 실패하는 시간대에도
+# '빈 화면' 대신 최근 성공분을 보여주기 위한 최후 폴백. {key: (epoch, list)}
+_YT_LAST_GOOD: dict = {}
+
+
+def get_youtube_stale_age_min(query: str, limit: int = 12,
+                              timelimit: str | None = None):
+    """현재 표시 목록이 '지난 성공분 폴백'이면 경과 분(int), 아니면 None."""
+    import time as _time
+    _key = (query, limit, timelimit)
+    _ts = _YT_EMPTY_COOLDOWN.get(_key)
+    if _ts is None:
+        return None  # 쿨다운 아님 = 정상 경로
+    _good = _YT_LAST_GOOD.get(_key)
+    if not _good:
+        return None
+    return max(0, int((_time.time() - _good[0]) / 60))
+
+
+def is_youtube_warm_inflight(query: str, limit: int = 12,
+                             timelimit: str | None = None) -> bool:
+    """해당 쿼리의 백그라운드 웜 수집이 진행 중인지 (클릭 경로의 잠금 대기 방지용)."""
+    with _YT_INFLIGHT_LOCK:
+        return (query, limit, timelimit) in _YT_INFLIGHT
+
 
 def warm_youtube_search(query: str, limit: int = 12, timelimit: str | None = None,
                         retries: int = 3, interval_sec: float = 90.0) -> None:
@@ -1785,20 +1816,27 @@ def warm_youtube_search(query: str, limit: int = 12, timelimit: str | None = Non
     HF IP 차단은 간헐적이라, 페이지가 열려 있는 동안 성공 창을 잡으면
     캐시(30분)가 채워져 이후 클릭이 즉시 뜬다. 성공 시 쿨다운도 해제한다."""
     import time as _time
+    _key = (query, limit, timelimit)
     for i in range(retries):
         try:
-            # 웜 경로는 사용자가 기다리지 않으므로 넉넉한 예산으로 수집(성공률 우선)
+            # 웜 경로는 사용자가 기다리지 않으므로 넉넉한 예산으로 수집(성공률 우선).
+            # 진행 중 플래그를 켜서 클릭 경로가 캐시 잠금에 같이 매달리지 않게 한다.
+            with _YT_INFLIGHT_LOCK:
+                _YT_INFLIGHT.add(_key)
             _YT_BUDGET_LOCAL.budget = _YT_BUDGET_WARM_SEC
             try:
                 r = _fetch_youtube_cached(query, limit, timelimit)
             finally:
                 _YT_BUDGET_LOCAL.budget = _YT_BUDGET_DEFAULT_SEC
+                with _YT_INFLIGHT_LOCK:
+                    _YT_INFLIGHT.discard(_key)
             if r:
-                _YT_EMPTY_COOLDOWN.pop((query, limit, timelimit), None)
+                _YT_EMPTY_COOLDOWN.pop(_key, None)
                 return
             _fetch_youtube_cached.clear()
         except Exception:
-            pass
+            with _YT_INFLIGHT_LOCK:
+                _YT_INFLIGHT.discard(_key)
         if i < retries - 1:
             _time.sleep(interval_sec)
     # 전 회차 실패 — 쿨다운 마킹(클릭 시 즉시 실패 안내)
@@ -1816,7 +1854,9 @@ def fetch_youtube_search(query: str, limit: int = 12, timelimit: str | None = No
     _key = (query, limit, timelimit)
     _ts = _YT_EMPTY_COOLDOWN.get(_key)
     if _ts is not None and _time.monotonic() - _ts < _YT_EMPTY_TTL_SEC:
-        return []
+        # 쿨다운 중 — 지난 성공분이 있으면 빈 화면 대신 그것을 보여준다
+        _good = _YT_LAST_GOOD.get(_key)
+        return list(_good[1]) if _good else []
     result = _fetch_youtube_cached(query, limit, timelimit)
     if not result:
         _YT_EMPTY_COOLDOWN[_key] = _time.monotonic()
@@ -1824,8 +1864,10 @@ def fetch_youtube_search(query: str, limit: int = 12, timelimit: str | None = No
             _fetch_youtube_cached.clear()
         except Exception:
             pass
-    else:
-        _YT_EMPTY_COOLDOWN.pop(_key, None)
+        _good = _YT_LAST_GOOD.get(_key)
+        return list(_good[1]) if _good else []
+    _YT_EMPTY_COOLDOWN.pop(_key, None)
+    _YT_LAST_GOOD[_key] = (_time.time(), list(result))
     return result
 
 

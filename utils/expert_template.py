@@ -284,12 +284,26 @@ def _youtube_section_fragment(query: str, limit: int, per_page: int,
             st.rerun(scope="fragment")
         return
 
+    # 웜(백그라운드 수집)이 진행 중이면 캐시 잠금에 매달리지 않고 즉시 안내 —
+    # 잠금 특성상 같은 키를 부르면 웜(최대 45초)이 끝날 때까지 같이 기다리게 된다.
+    from utils.data_fetcher import is_youtube_warm_inflight
+    if is_youtube_warm_inflight(query, limit, _tl):
+        st.info("영상 목록을 백그라운드에서 수집하고 있어요 — 잠시 후 아래 버튼으로 확인해 주세요.")
+        if st.button("목록 확인", key=f"{_yt_gate}_chk", use_container_width=True):
+            st.rerun(scope="fragment")
+        return
+
     # 클릭 즉시 피드백 — 수집 중임을 스피너로 표시 (무반응처럼 보이는 문제 해소)
     with st.spinner("영상 목록 준비 중... (최대 12초)"):
         videos = fetch_youtube_search(query, limit=limit, timelimit=_tl)
     if not videos:
         _show_empty_state("관련 영상을 찾지 못했습니다.")
         return
+    # 지난 성공분 폴백 표시 중이면 정직하게 안내
+    from utils.data_fetcher import get_youtube_stale_age_min
+    _age = get_youtube_stale_age_min(query, limit, _tl)
+    if _age is not None:
+        st.caption(f"⚠️ 지금은 수집이 일시 실패 상태라 {_age}분 전 성공한 목록을 표시 중입니다 — 백그라운드에서 자동 재수집합니다.")
 
     # Sort toggle checkbox
     sort_key = f"sort_toggle_{_qkey(query)}"
