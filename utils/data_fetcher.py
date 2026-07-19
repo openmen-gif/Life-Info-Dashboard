@@ -1769,6 +1769,28 @@ _YT_EMPTY_COOLDOWN: dict = {}
 _YT_EMPTY_TTL_SEC = 300.0
 
 
+def warm_youtube_search(query: str, limit: int = 12, timelimit: str | None = None,
+                        retries: int = 3, interval_sec: float = 90.0) -> None:
+    """백그라운드 웜 전용 — 실패 시 interval 간격으로 재시도(쿨다운 우회).
+
+    HF IP 차단은 간헐적이라, 페이지가 열려 있는 동안 성공 창을 잡으면
+    캐시(30분)가 채워져 이후 클릭이 즉시 뜬다. 성공 시 쿨다운도 해제한다."""
+    import time as _time
+    for i in range(retries):
+        try:
+            r = _fetch_youtube_cached(query, limit, timelimit)
+            if r:
+                _YT_EMPTY_COOLDOWN.pop((query, limit, timelimit), None)
+                return
+            _fetch_youtube_cached.clear()
+        except Exception:
+            pass
+        if i < retries - 1:
+            _time.sleep(interval_sec)
+    # 전 회차 실패 — 쿨다운 마킹(클릭 시 즉시 실패 안내)
+    _YT_EMPTY_COOLDOWN[(query, limit, timelimit)] = _time.monotonic()
+
+
 def fetch_youtube_search(query: str, limit: int = 12, timelimit: str | None = None) -> list[dict]:
     """Fetch YouTube videos. 빈 결과는 캐시 대신 5분 쿨다운으로 관리한다.
 

@@ -134,7 +134,8 @@ def _show_empty_state(msg: str):
     st.warning(
         f"⚠️ {msg}\n\n"
         "클라우드(HF) IP 레이트리밋이거나 일시적 수집 실패일 수 있어요. "
-        "상단 **🔄 데이터 갱신**을 누르거나 잠시 후 새로고침하면 보통 복구됩니다.  \n"
+        "백그라운드에서 몇 분 내 자동 재수집을 시도합니다 — 잠시 후 새로고침하거나, "
+        "지금 바로 시도하려면 상단 **🔄 데이터 갱신**을 눌러주세요.  \n"
         "*(팁: 지속적으로 실패할 경우, Hugging Face Space 설정의 Repository Secrets에 **YOUTUBE_API_KEY** (YouTube Data API v3)를 등록하면 차단 없이 안정적인 수집이 가능합니다.)*"
     )
 
@@ -261,7 +262,10 @@ def _youtube_section_fragment(query: str, limit: int, per_page: int,
 
             def _warm(q=query, lm=limit, tl=_tl):
                 try:
-                    fetch_youtube_search(q, limit=lm, timelimit=tl)
+                    # 실패 시 90초 간격 자동 재시도(3회) — HF 간헐 차단의 성공 창을 잡아
+                    # 캐시를 채워두면 이후 클릭이 즉시 뜬다 (쿨다운 우회 웜 전용 경로)
+                    from utils.data_fetcher import warm_youtube_search
+                    warm_youtube_search(q, limit=lm, timelimit=tl)
                 except Exception:
                     pass
 
