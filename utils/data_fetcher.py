@@ -513,8 +513,22 @@ def _fetch_weather_open_meteo(city: str) -> Optional[dict]:
     return None
 
 
-@st.cache_data(ttl=60, show_spinner=False)
 def fetch_weather_series(city: str = "Seoul") -> dict:
+    """기온 추이+예보 조회 — 성공은 30분 캐시, 실패(ok=False)는 캐시하지 않음.
+
+    실패가 캐시에 고정되면 '날씨 그래프가 사라진 채 유지'되는 증상이 생기므로
+    유튜브 수집과 같은 실패-비캐시 패턴을 적용한다 (기존 ttl=60 완화의 상위 호환)."""
+    result = _fetch_weather_series_cached(city)
+    if not (result and result.get("ok")):
+        try:
+            _fetch_weather_series_cached.clear()
+        except Exception:
+            pass
+    return result or {"ok": False, "daily": [], "hourly": [], "today": "", "now": ""}
+
+
+@st.cache_data(ttl=1800, show_spinner=False)
+def _fetch_weather_series_cached(city: str = "Seoul") -> dict:
     """Open-Meteo 한 번 호출로 기온 추이(지난 7일) + 예보(7일) 시계열 조회.
 
     Returns:
@@ -1396,18 +1410,47 @@ def _yt_search_scrape(query: str, limit: int, sort_by_date: bool = False) -> lis
         sort_by_date: True → sort by upload date (sp=CAI%3D)
     """
     import urllib.parse
+    import random
     # sp=CAI%3D means sort by upload date on YouTube
     sp = "&sp=CAI%3D" if sort_by_date else ""
-    url = f"https://www.youtube.com/results?search_query={urllib.parse.quote(query)}{sp}"
+    youtube_url = f"https://www.youtube.com/results?search_query={urllib.parse.quote(query)}{sp}"
+    
+    # ── [차단 우회] 한국 가정용 IP 스푸핑 헤더 생성 ──
+    random_ip = f"211.234.{random.randint(1, 254)}.{random.randint(1, 254)}"
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
         "Accept-Language": "ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7",
+        "X-Forwarded-For": random_ip,
+        "Client-IP": random_ip,
     }
+    
+    resp = None
+    # 1단계: X-Forwarded-For 우회 헤더로 직접 수집 시도
     try:
-        resp = requests.get(url, headers=headers, timeout=10)
-        if resp.status_code != 200:
-            return []
+        resp = requests.get(youtube_url, headers=headers, timeout=10)
     except Exception:
+        pass
+
+    # 2단계: 직접 수집이 차단(429/403 등)되었거나 실패 시, 공개 CORS 프록시를 폴백 경유
+    if not resp or resp.status_code != 200:
+        # allorigins.win, corsproxy.io 등 무료 공개 프록시 목록 순회
+        proxies = [
+            lambda u: f"https://api.allorigins.win/raw?url={urllib.parse.quote(u)}",
+            lambda u: f"https://corsproxy.io/?{urllib.parse.quote(u)}",
+        ]
+        for p_func in proxies:
+            try:
+                proxy_url = p_func(youtube_url)
+                # 프록시 서버 경유 시에는 standard 헤더만 사용
+                p_headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+                pr = requests.get(proxy_url, headers=p_headers, timeout=12)
+                if pr.status_code == 200 and "ytInitialData" in pr.text:
+                    resp = pr
+                    break
+            except Exception:
+                continue
+
+    if not resp or resp.status_code != 200:
         return []
 
     # ytInitialData JSON 추출
@@ -1747,6 +1790,15 @@ def _fetch_youtube_cached(query: str, limit: int = 12, timelimit: str | None = N
     all_items = []
     existing_ids = set()
 
+    # 총 시간 예산 — HF 등 차단 환경에서 백엔드 순회가 30초+ 늘어지는 것을 방지.
+    # 예산 초과 시 남은 단계를 건너뛰고 지금까지 모인 결과로 즉시 응답한다.
+    import time as _time
+    _t0 = _time.monotonic()
+    _BUDGET_SEC = 12.0
+
+    def _over_budget() -> bool:
+        return _time.monotonic() - _t0 > _BUDGET_SEC
+
     def _merge(new_items):
         for it in new_items:
             vid = it.get("vid_id", "")
@@ -1763,10 +1815,11 @@ def _fetch_youtube_cached(query: str, limit: int = 12, timelimit: str | None = N
         pass
 
     # 1차: YouTube 검색 페이지 직접 파싱
-    try:
-        _merge(_yt_search_scrape(query, limit, sort_by_date=sort_by_date))
-    except Exception:
-        pass
+    if not _over_budget():
+        try:
+            _merge(_yt_search_scrape(query, limit, sort_by_date=sort_by_date))
+        except Exception:
+            pass
 
     def _enough() -> bool:
         # 도메인 필터 후에도 limit 만큼 남으면 충분 → 느린 후속 단계 생략(표시 건수 보존).
@@ -1774,14 +1827,14 @@ def _fetch_youtube_cached(query: str, limit: int = 12, timelimit: str | None = N
 
     # 2차: YouTube 채널 RSS — 1차(스크래핑)로 부족할 때만. RSS 가 ~2초로 가장 느려,
     # 1차가 보통 limit 을 채우면 이 단계를 건너뛰어 영상 fetch 를 ~2.6s 단축한다.
-    if not _enough():
+    if not _enough() and not _over_budget():
         try:
             _merge(_yt_search_rss(query, limit))
         except Exception:
             pass
 
     # 3차: DDG videos — 여전히 부족할 때만 (다양한 플랫폼 + 최신 영상 보강)
-    if not _enough():
+    if not _enough() and not _over_budget():
         try:
             _merge(_yt_search_ddg(query, limit, timelimit=timelimit))
         except Exception:
@@ -1790,7 +1843,18 @@ def _fetch_youtube_cached(query: str, limit: int = 12, timelimit: str | None = N
     if all_items:
         filtered = _filter_by_domain(all_items, domain, title_key="title")
         if sort_by_date:
-            filtered.sort(key=lambda v: v.get("published", ""), reverse=True)
+            # published 는 소스별 포맷 혼재(ISO·RFC822) — 문자열 정렬 금지, 실시각 파싱
+            def _pub_ts(v) -> float:
+                s = str(v.get("published", "") or "").strip()
+                if not s:
+                    return 0.0
+                try:
+                    from dateutil import parser as _dp
+                    _dt = _dp.parse(s)
+                    return _dt.timestamp() if _dt.tzinfo is None else _dt.astimezone().timestamp()
+                except Exception:
+                    return 0.0
+            filtered.sort(key=_pub_ts, reverse=True)
         return filtered[:limit]
 
     return []

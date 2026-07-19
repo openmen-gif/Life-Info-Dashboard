@@ -134,7 +134,8 @@ def _show_empty_state(msg: str):
     st.warning(
         f"⚠️ {msg}\n\n"
         "클라우드(HF) IP 레이트리밋이거나 일시적 수집 실패일 수 있어요. "
-        "상단 **🔄 데이터 갱신**을 누르거나 잠시 후 새로고침하면 보통 복구됩니다."
+        "상단 **🔄 데이터 갱신**을 누르거나 잠시 후 새로고침하면 보통 복구됩니다.  \n"
+        "*(팁: 지속적으로 실패할 경우, Hugging Face Space 설정의 Repository Secrets에 **YOUTUBE_API_KEY** (YouTube Data API v3)를 등록하면 차단 없이 안정적인 수집이 가능합니다.)*"
     )
 
 
@@ -279,7 +280,9 @@ def _youtube_section_fragment(query: str, limit: int, per_page: int,
             st.rerun(scope="fragment")
         return
 
-    videos = fetch_youtube_search(query, limit=limit, timelimit=_tl)
+    # 클릭 즉시 피드백 — 수집 중임을 스피너로 표시 (무반응처럼 보이는 문제 해소)
+    with st.spinner("영상 목록 준비 중... (최대 12초)"):
+        videos = fetch_youtube_search(query, limit=limit, timelimit=_tl)
     if not videos:
         _show_empty_state("관련 영상을 찾지 못했습니다.")
         return
