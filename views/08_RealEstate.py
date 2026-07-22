@@ -50,17 +50,17 @@ def _render_price_lookup():
     # 버튼을 눌러야만 불러오도록 지연 로드한다.
     loaded = st.session_state.get("re_apt_options")
     if not loaded or loaded.get("lawd_cd") != lawd_cd:
-        st.caption(f"{sido} {sigungu}의 실제 단지명 목록을 불러온 뒤 검색할 수 있습니다 (최근 3년 기준).")
+        st.caption(f"{sido} {sigungu}의 실제 단지명 목록을 불러온 뒤 검색할 수 있습니다 (최근 1년 기준).")
         if st.button("📋 단지 목록 불러오기", key="re_load_names_btn"):
             with st.spinner(f"{sido} {sigungu} 단지 목록 불러오는 중..."):
-                names = list_apt_names(lawd_cd, months=36)
+                names = list_apt_names(lawd_cd, months=12)
             st.session_state["re_apt_options"] = {"lawd_cd": lawd_cd, "names": names}
             st.rerun()
         return
 
     apt_options = loaded["names"]
     if not apt_options:
-        st.info("이 지역은 최근 3년간 조회된 거래가 없어 단지 목록을 표시할 수 없습니다.")
+        st.info("이 지역은 최근 1년간 조회된 거래가 없어 단지 목록을 표시할 수 없습니다. 거래가 드문 지역일 수 있습니다.")
         return
 
     apt_name = st.selectbox(

@@ -177,14 +177,17 @@ def _recent_deal_ymds(months: int) -> list[str]:
     return out
 
 
-@st.cache_data(ttl=21600, show_spinner=False)  # 6시간 캐시 — 실거래 자료는 매일 여러 번 조회할 필요 없음
+@st.cache_data(ttl=3600, show_spinner=False)  # 1시간 캐시 — HF 무료 컨테이너 메모리 부담 완화(6h->1h)
 def _fetch_region_history(lawd_cd: str, months: int) -> list[dict]:
-    """최근 N개월, 해당 지역의 단지명 필터 없는 전체 실거래 내역 (단지명 매칭·유사명칭 제안 공용)."""
+    """최근 N개월, 해당 지역의 단지명 필터 없는 전체 실거래 내역 (단지명 매칭·유사명칭 제안 공용).
+
+    2026-07-22 실거래 조회 직후 HF Space가 두 차례 exit 139(SIGSEGV)로 죽는 것을 확인 —
+    무료 컨테이너에서 대용량 지역 전체 데이터를 오래 캐시에 들고 있는 게 유력한 원인으로
+    보여, 동시 요청 수·캐시 보존 시간을 보수적으로 줄였다(확정 원인은 서버 로그 미확보로
+    불확실 — 재발하면 이 함수 자체를 더 축소해야 함)."""
     deal_ymds = _recent_deal_ymds(months)
     all_records: list[dict] = []
-    # 단지 목록 채우기가 버튼 없이 지역 선택만으로 바로 실행되면서 매 방문마다 이 호출이
-    # 발생한다 — 무료 호스팅 컨테이너 부담을 줄이기 위해 동시 요청 수를 보수적으로 제한.
-    with ThreadPoolExecutor(max_workers=min(len(deal_ymds), 4)) as executor:
+    with ThreadPoolExecutor(max_workers=min(len(deal_ymds), 2)) as executor:
         futures = [executor.submit(_fetch_month, lawd_cd, ymd) for ymd in deal_ymds]
         for future in futures:
             try:
@@ -214,7 +217,7 @@ def fetch_apt_trade_history(lawd_cd: str, apt_name: str, months: int = 12) -> li
     return all_records
 
 
-def list_apt_names(lawd_cd: str, months: int = 36) -> list[str]:
+def list_apt_names(lawd_cd: str, months: int = 12) -> list[str]:
     """해당 지역에서 실제로 거래된 단지명 전체 목록(가나다순) — 검색 가능한 선택창 채우기용.
 
     "고덕현대"처럼 사용자가 실제 등록명("현대(고덕)")을 몰라 못 찾는 문제를 원천 차단한다:
