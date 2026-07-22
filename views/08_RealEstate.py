@@ -5,7 +5,7 @@ from utils.charts import render_trend_with_stats
 from utils.config import HAS_MOLIT
 from utils.css_loader import apply_custom_css
 from utils.expert_template import render_expert_page
-from utils.realestate_fetcher import LAWD_CODES, fetch_apt_trade_history
+from utils.realestate_fetcher import LAWD_CODES, fetch_apt_trade_history, list_apt_names
 
 apply_custom_css()
 
@@ -36,13 +36,26 @@ def _render_price_lookup():
         )
         return
 
-    col_sido, col_sigungu, col_apt = st.columns([1, 1, 2])
+    col_sido, col_sigungu = st.columns(2)
     with col_sido:
         sido = st.selectbox("시/도", list(LAWD_CODES.keys()), key="re_sido")
     with col_sigungu:
         sigungu = st.selectbox("시/군/구", list(LAWD_CODES[sido].keys()), key="re_sigungu")
-    with col_apt:
-        apt_name = st.text_input("아파트 단지명", key="re_apt_name", placeholder="예: 래미안, 자이, 힐스테이트 ...")
+
+    lawd_cd = LAWD_CODES[sido][sigungu]
+    # 단지명 목록은 검색 기간(조회 기간)과 별개로 넉넉히 3년치로 채운다 — "현대(고덕)"처럼
+    # 사용자가 정확한 등록명을 몰라 자유 입력으로는 못 찾던 문제를 원천 차단(직접 입력 대신 실재 단지만 선택).
+    with st.spinner(f"{sido} {sigungu} 단지 목록 불러오는 중..."):
+        apt_options = list_apt_names(lawd_cd, months=36)
+
+    if not apt_options:
+        st.info("이 지역은 최근 3년간 조회된 거래가 없어 단지 목록을 표시할 수 없습니다.")
+        return
+
+    apt_name = st.selectbox(
+        "아파트 단지명", apt_options, index=None,
+        placeholder="단지명을 입력해 검색하세요 (예: 래미안)", key="re_apt_name",
+    )
 
     period_labels = ["1년", "3년", "5년"]
     period_months = [12, 36, 60]
@@ -52,26 +65,27 @@ def _render_price_lookup():
     )
 
     if st.button("🔍 시세 조회", type="primary", key="re_search_btn"):
-        if not apt_name.strip():
-            st.warning("아파트 단지명을 입력해주세요.")
+        if not apt_name:
+            st.warning("아파트 단지명을 선택해주세요.")
         else:
-            lawd_cd = LAWD_CODES[sido][sigungu]
+            months = period_months[period_idx]
             with st.spinner(f"{sido} {sigungu} '{apt_name}' 실거래 내역 조회 중... (최대 {period_labels[period_idx]}치)"):
-                records = fetch_apt_trade_history(lawd_cd, apt_name, months=period_months[period_idx])
+                records = fetch_apt_trade_history(lawd_cd, apt_name, months=months)
             st.session_state["re_result"] = {
                 "records": records, "apt_name": apt_name, "sido": sido, "sigungu": sigungu,
+                "period_label": period_labels[period_idx],
             }
 
     result = st.session_state.get("re_result")
     if not result:
         return
+    period_idx = period_labels.index(result["period_label"])
 
     records = result["records"]
     if not records:
         st.warning(
-            f"'{result['apt_name']}' 관련 거래 내역을 찾지 못했습니다. 단지명 철자·지역 선택을 확인해주세요.\n\n"
-            "실거래 자료는 동명 단지 구분을 위해 \"현대(고덕)\"처럼 지역명이 뒤에 괄호로 붙는 경우가 있어요 — "
-            "단지명만 짧게(예: \"현대\") 입력해 다시 시도해보세요."
+            f"'{result['apt_name']}' 단지는 최근 {result['period_label']} 동안 거래 내역이 없습니다. "
+            "조회 기간을 늘려서 다시 시도해보세요."
         )
         return
 

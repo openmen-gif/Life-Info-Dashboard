@@ -178,26 +178,63 @@ def _recent_deal_ymds(months: int) -> list[str]:
 
 
 @st.cache_data(ttl=21600, show_spinner=False)  # 6시간 캐시 — 실거래 자료는 매일 여러 번 조회할 필요 없음
-def fetch_apt_trade_history(lawd_cd: str, apt_name: str, months: int = 12) -> list[dict]:
-    """최근 N개월 실거래 내역 중 단지명이 일치하는 거래만 모아 계약일 오름차순으로 반환."""
+def _fetch_region_history(lawd_cd: str, months: int) -> list[dict]:
+    """최근 N개월, 해당 지역의 단지명 필터 없는 전체 실거래 내역 (단지명 매칭·유사명칭 제안 공용)."""
     deal_ymds = _recent_deal_ymds(months)
     all_records: list[dict] = []
-    with ThreadPoolExecutor(max_workers=min(len(deal_ymds), 8)) as executor:
+    # 단지 목록 채우기가 버튼 없이 지역 선택만으로 바로 실행되면서 매 방문마다 이 호출이
+    # 발생한다 — 무료 호스팅 컨테이너 부담을 줄이기 위해 동시 요청 수를 보수적으로 제한.
+    with ThreadPoolExecutor(max_workers=min(len(deal_ymds), 4)) as executor:
         futures = [executor.submit(_fetch_month, lawd_cd, ymd) for ymd in deal_ymds]
         for future in futures:
             try:
                 all_records.extend(future.result(timeout=15))
             except Exception:
                 continue
-    name = apt_name.strip()
-    if name:
+    return all_records
+
+
+def _name_tokens(apt_name: str) -> list[str]:
+    return [t for t in apt_name.strip().split() if t]
+
+
+def fetch_apt_trade_history(lawd_cd: str, apt_name: str, months: int = 12) -> list[dict]:
+    """최근 N개월 실거래 내역 중 단지명이 일치하는 거래만 모아 계약일 오름차순으로 반환."""
+    all_records = _fetch_region_history(lawd_cd, months)
+    tokens = _name_tokens(apt_name)
+    if tokens:
         # 실거래 자료는 동명 단지 구분을 위해 "현대(고덕)"처럼 지역명을 괄호로 뒤에 붙이는
         # 경우가 많아, 사용자가 익숙한 "고덕 현대" 어순으로 입력하면 단순 부분일치로는
         # 못 찾는다 — 공백으로 나눈 각 단어가 순서·위치 무관하게 전부 포함되면 매칭.
-        tokens = [t for t in name.split() if t]
         all_records = [
             r for r in all_records
             if all(t in r["아파트명"] for t in tokens)
         ]
     all_records.sort(key=lambda r: r["계약일"])
     return all_records
+
+
+def list_apt_names(lawd_cd: str, months: int = 36) -> list[str]:
+    """해당 지역에서 실제로 거래된 단지명 전체 목록(가나다순) — 검색 가능한 선택창 채우기용.
+
+    "고덕현대"처럼 사용자가 실제 등록명("현대(고덕)")을 몰라 못 찾는 문제를 원천 차단한다:
+    자유 입력 대신 이 목록에서 고르게 하면 오타·어순 문제 자체가 생기지 않는다."""
+    all_records = _fetch_region_history(lawd_cd, months)
+    return sorted({r["아파트명"] for r in all_records})
+
+
+def find_similar_apt_names(lawd_cd: str, apt_name: str, months: int = 12, limit: int = 8) -> list[str]:
+    """검색어가 0건일 때 후보 제시용 — 입력 단어 중 1개라도 포함하는 실제 단지명을
+    매칭 단어 수 많은 순 -> 이름 순으로 최대 limit개 반환."""
+    tokens = _name_tokens(apt_name)
+    if not tokens:
+        return []
+    all_records = _fetch_region_history(lawd_cd, months)
+    names = {r["아파트명"] for r in all_records}
+    scored = [
+        (sum(1 for t in tokens if t in n), n)
+        for n in names
+        if any(t in n for t in tokens)
+    ]
+    scored.sort(key=lambda x: (-x[0], x[1]))
+    return [n for _, n in scored[:limit]]
