@@ -191,6 +191,13 @@ def fetch_apt_trade_history(lawd_cd: str, apt_name: str, months: int = 12) -> li
                 continue
     name = apt_name.strip()
     if name:
-        all_records = [r for r in all_records if name in r["아파트명"]]
+        # 실거래 자료는 동명 단지 구분을 위해 "현대(고덕)"처럼 지역명을 괄호로 뒤에 붙이는
+        # 경우가 많아, 사용자가 익숙한 "고덕 현대" 어순으로 입력하면 단순 부분일치로는
+        # 못 찾는다 — 공백으로 나눈 각 단어가 순서·위치 무관하게 전부 포함되면 매칭.
+        tokens = [t for t in name.split() if t]
+        all_records = [
+            r for r in all_records
+            if all(t in r["아파트명"] for t in tokens)
+        ]
     all_records.sort(key=lambda r: r["계약일"])
     return all_records

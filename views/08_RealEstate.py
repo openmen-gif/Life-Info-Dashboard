@@ -10,6 +10,20 @@ from utils.realestate_fetcher import LAWD_CODES, fetch_apt_trade_history
 apply_custom_css()
 
 
+def _fmt_manwon(v: float) -> str:
+    """만원 단위 숫자 -> '16억 6,000만원' 형식(1억 미만은 '9,500만원'만).
+
+    공용 차트 컴포넌트의 '만원 166,000'식 접두 표기는 한국어로 어색하고 길어
+    카드에서 잘리므로, 실거래가 특화 축약 표기를 따로 쓴다."""
+    v = int(round(v))
+    sign = "-" if v < 0 else ""
+    v = abs(v)
+    eok, man = divmod(v, 10000)
+    if eok:
+        return f"{sign}{eok}억" + (f" {man:,}만원" if man else "")
+    return f"{sign}{v:,}만원"
+
+
 def _render_price_lookup():
     """아파트 단지 실거래 시세 조회 + 기간별 가격 추세."""
     st.markdown("## 🔍 아파트 시세 조회")
@@ -54,7 +68,11 @@ def _render_price_lookup():
 
     records = result["records"]
     if not records:
-        st.warning(f"'{result['apt_name']}' 관련 거래 내역을 찾지 못했습니다. 단지명 철자·지역 선택을 확인해주세요.")
+        st.warning(
+            f"'{result['apt_name']}' 관련 거래 내역을 찾지 못했습니다. 단지명 철자·지역 선택을 확인해주세요.\n\n"
+            "실거래 자료는 동명 단지 구분을 위해 \"현대(고덕)\"처럼 지역명이 뒤에 괄호로 붙는 경우가 있어요 — "
+            "단지명만 짧게(예: \"현대\") 입력해 다시 시도해보세요."
+        )
         return
 
     st.success(f"{result['sido']} {result['sigungu']} '{result['apt_name']}' 거래 {len(records)}건 조회됨")
@@ -70,7 +88,17 @@ def _render_price_lookup():
         df.groupby("계약일", as_index=False)["거래금액_만원"].mean()
         .rename(columns={"계약일": "Date", "거래금액_만원": "Close"})
     )
-    render_trend_with_stats(trend.to_dict("records"), unit="만원", decimals=0)
+    render_trend_with_stats(trend.to_dict("records"), decimals=0, show_stats=False)
+
+    prices = trend["Close"].tolist()
+    change = prices[-1] - prices[0]
+    pct = (change / prices[0] * 100) if prices[0] else 0
+    c1, c2, c3, c4, c5 = st.columns(5)
+    c1.metric("현재", _fmt_manwon(prices[-1]))
+    c2.metric("최고", _fmt_manwon(max(prices)))
+    c3.metric("최저", _fmt_manwon(min(prices)))
+    c4.metric("평균", _fmt_manwon(sum(prices) / len(prices)))
+    c5.metric("기간 등락", f"{'+' if change >= 0 else ''}{_fmt_manwon(change)} ({pct:+.1f}%)")
 
     st.divider()
 
