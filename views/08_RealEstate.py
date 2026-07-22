@@ -1,9 +1,81 @@
 # -*- coding: utf-8 -*-
+import pandas as pd
 import streamlit as st
+from utils.charts import render_trend_with_stats
+from utils.config import HAS_MOLIT
 from utils.css_loader import apply_custom_css
 from utils.expert_template import render_expert_page
+from utils.realestate_fetcher import LAWD_CODES, fetch_apt_trade_history
 
 apply_custom_css()
+
+
+def _render_price_lookup():
+    """아파트 단지 실거래 시세 조회 + 기간별 가격 추세."""
+    st.markdown("## 🔍 아파트 시세 조회")
+    st.caption("국토교통부 실거래가 자료 기반 — 최근 거래 내역과 기간별 가격 추세를 확인하세요.")
+
+    if not HAS_MOLIT:
+        st.info(
+            "국토교통부 실거래가 API 키가 설정되지 않았습니다. "
+            "`.env`에 `MOLIT_API_KEY`를 추가하면 이 섹션이 활성화됩니다."
+        )
+        return
+
+    col_sido, col_sigungu, col_apt = st.columns([1, 1, 2])
+    with col_sido:
+        sido = st.selectbox("시/도", list(LAWD_CODES.keys()), key="re_sido")
+    with col_sigungu:
+        sigungu = st.selectbox("시/군/구", list(LAWD_CODES[sido].keys()), key="re_sigungu")
+    with col_apt:
+        apt_name = st.text_input("아파트 단지명", key="re_apt_name", placeholder="예: 래미안, 자이, 힐스테이트 ...")
+
+    period_labels = ["1년", "3년", "5년"]
+    period_months = [12, 36, 60]
+    period_idx = st.selectbox(
+        "조회 기간", range(len(period_labels)),
+        format_func=lambda i: period_labels[i], index=0, key="re_period",
+    )
+
+    if st.button("🔍 시세 조회", type="primary", key="re_search_btn"):
+        if not apt_name.strip():
+            st.warning("아파트 단지명을 입력해주세요.")
+        else:
+            lawd_cd = LAWD_CODES[sido][sigungu]
+            with st.spinner(f"{sido} {sigungu} '{apt_name}' 실거래 내역 조회 중... (최대 {period_labels[period_idx]}치)"):
+                records = fetch_apt_trade_history(lawd_cd, apt_name, months=period_months[period_idx])
+            st.session_state["re_result"] = {
+                "records": records, "apt_name": apt_name, "sido": sido, "sigungu": sigungu,
+            }
+
+    result = st.session_state.get("re_result")
+    if not result:
+        return
+
+    records = result["records"]
+    if not records:
+        st.warning(f"'{result['apt_name']}' 관련 거래 내역을 찾지 못했습니다. 단지명 철자·지역 선택을 확인해주세요.")
+        return
+
+    st.success(f"{result['sido']} {result['sigungu']} '{result['apt_name']}' 거래 {len(records)}건 조회됨")
+
+    df = pd.DataFrame(records)
+    show_df = df[["계약일", "전용면적", "층", "거래금액_만원", "건축년도"]].copy()
+    show_df.columns = ["계약일", "전용면적(㎡)", "층", "거래금액(만원)", "건축년도"]
+    show_df = show_df.sort_values("계약일", ascending=False)
+    st.dataframe(show_df, use_container_width=True, hide_index=True)
+
+    st.markdown(f"#### 📈 '{result['apt_name']}' 가격 추세 ({period_labels[period_idx]})")
+    trend = (
+        df.groupby("계약일", as_index=False)["거래금액_만원"].mean()
+        .rename(columns={"계약일": "Date", "거래금액_만원": "Close"})
+    )
+    render_trend_with_stats(trend.to_dict("records"), unit="만원", decimals=0)
+
+    st.divider()
+
+
+_render_price_lookup()
 
 render_expert_page(
     title="부동산",

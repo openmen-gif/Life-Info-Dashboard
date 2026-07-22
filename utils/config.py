@@ -6,6 +6,16 @@
 """
 import os
 
+try:
+    # 로컬 실행 시 .env 파일을 실제 프로세스 환경변수로 로드 — 이게 없으면 아래 모든
+    # os.getenv() 키 조회가 .env 파일 내용을 못 읽는다(2026-07-23 발견: 지금까지
+    # NAVER/OpenWeather/YouTube 키도 로컬에선 이 이유로 전부 미적용 상태였음).
+    # HF Spaces 등 .env 파일이 없는 배포 환경에서는 조용히 스킵된다(no-op).
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
+
 _explicit = os.getenv("LIFE_MODE")
 
 if _explicit:
@@ -33,3 +43,10 @@ OPENWEATHER_API_KEY = os.getenv("OPENWEATHER_API_KEY", "")
 # 발급: https://console.cloud.google.com → YouTube Data API v3 사용설정 → API 키 (무료 일 10,000 units)
 YOUTUBE_API_KEY = os.getenv("YOUTUBE_API_KEY", "")
 HAS_YOUTUBE_API = bool(YOUTUBE_API_KEY)
+
+# 국토교통부 아파트매매 실거래가 (선택) — 키 있으면 부동산 페이지에서 실제 시세 조회 가능.
+# 키 없으면 시세 조회 섹션은 안내 메시지만 표시하고 나머지 기능은 그대로 동작.
+# 발급: https://www.data.go.kr/data/15126469/openapi.do → 활용신청(자동승인) → 마이페이지
+#       개발계정에서 Decoding 키 확인 (무료, 개발계정 일 10,000건)
+MOLIT_API_KEY = os.getenv("MOLIT_API_KEY", "")
+HAS_MOLIT = bool(MOLIT_API_KEY)

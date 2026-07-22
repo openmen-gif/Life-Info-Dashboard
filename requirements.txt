@@ -14,3 +14,4 @@ ddgs>=8.0.0
 cachetools==5.5.2
 yfinance==1.2.0
 lxml==6.0.2
+python-dotenv==1.0.1
