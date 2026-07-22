@@ -43,11 +43,22 @@ def _render_price_lookup():
         sigungu = st.selectbox("시/군/구", list(LAWD_CODES[sido].keys()), key="re_sigungu")
 
     lawd_cd = LAWD_CODES[sido][sigungu]
-    # 단지명 목록은 검색 기간(조회 기간)과 별개로 넉넉히 3년치로 채운다 — "현대(고덕)"처럼
-    # 사용자가 정확한 등록명을 몰라 자유 입력으로는 못 찾던 문제를 원천 차단(직접 입력 대신 실재 단지만 선택).
-    with st.spinner(f"{sido} {sigungu} 단지 목록 불러오는 중..."):
-        apt_options = list_apt_names(lawd_cd, months=36)
 
+    # 단지 목록 조회(최대 몇 초)를 지역 선택 즉시 실행하면 이 함수가 반환되기 전까지
+    # 아래 뉴스·차트 섹션(render_expert_page)이 전혀 그려지지 않아 "페이지가 안 뜸"처럼
+    # 보인다 — 이 코드베이스의 다른 무거운 조회(뉴스 불러오기·영상 보기)와 동일하게
+    # 버튼을 눌러야만 불러오도록 지연 로드한다.
+    loaded = st.session_state.get("re_apt_options")
+    if not loaded or loaded.get("lawd_cd") != lawd_cd:
+        st.caption(f"{sido} {sigungu}의 실제 단지명 목록을 불러온 뒤 검색할 수 있습니다 (최근 3년 기준).")
+        if st.button("📋 단지 목록 불러오기", key="re_load_names_btn"):
+            with st.spinner(f"{sido} {sigungu} 단지 목록 불러오는 중..."):
+                names = list_apt_names(lawd_cd, months=36)
+            st.session_state["re_apt_options"] = {"lawd_cd": lawd_cd, "names": names}
+            st.rerun()
+        return
+
+    apt_options = loaded["names"]
     if not apt_options:
         st.info("이 지역은 최근 3년간 조회된 거래가 없어 단지 목록을 표시할 수 없습니다.")
         return
@@ -57,8 +68,8 @@ def _render_price_lookup():
         placeholder="단지명을 입력해 검색하세요 (예: 래미안)", key="re_apt_name",
     )
 
-    period_labels = ["1년", "3년", "5년"]
-    period_months = [12, 36, 60]
+    period_labels = ["1년", "3년", "5년", "10년"]
+    period_months = [12, 36, 60, 120]
     period_idx = st.selectbox(
         "조회 기간", range(len(period_labels)),
         format_func=lambda i: period_labels[i], index=0, key="re_period",
