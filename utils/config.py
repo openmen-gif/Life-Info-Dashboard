@@ -25,15 +25,28 @@ def load_external_env():
 
     파일이 없거나 python-dotenv 가 없으면 아무 일도 하지 않는다 — HF Spaces 는
     Space 시크릿(환경변수)을 그대로 쓴다. 읽었으면 True 를 돌려준다.
+
+    경로 해석·존재 확인·읽기 중 오류(권한 없음, 인코딩 오류, 확인 뒤 파일이
+    사라짐 등)는 경고만 남기고 False 를 돌려준다 — config import 가 죽지 않게.
+    경고에는 예외 종류만 남기고 파일 내용·값은 출력하지 않는다.
     """
     try:
         from dotenv import load_dotenv
     except ImportError:
         return False
-    path = _external_env_path()
-    if not path.is_file():
+    try:
+        path = _external_env_path()
+        if not path.is_file():
+            return False
+        load_dotenv(path, override=False)
+    except (OSError, UnicodeError, ValueError, RuntimeError) as exc:
+        import warnings
+        warnings.warn(
+            f"외부 비밀 키 파일을 읽지 못해 건너뜀 ({type(exc).__name__})",
+            RuntimeWarning,
+            stacklevel=2,
+        )
         return False
-    load_dotenv(path, override=False)
     return True
 
 
