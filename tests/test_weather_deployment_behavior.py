@@ -15,7 +15,8 @@ def test_weather_series_limits_failed_requests_to_two_five_second_attempts(monke
         raise TimeoutError("deployment egress timeout")
 
     monkeypatch.setattr(data_fetcher.requests, "get", fail_get)
-    result = data_fetcher.fetch_weather_series.__wrapped__("서울")
+    data_fetcher._fetch_weather_series_cached.clear()
+    result = data_fetcher.fetch_weather_series("서울")
 
     assert result["ok"] is False
     assert calls == [5, 5]
