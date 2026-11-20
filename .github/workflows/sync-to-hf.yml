@@ -3,9 +3,35 @@ name: Sync to Hugging Face Spaces
 on:
   push:
     branches: [master]
+  pull_request:
+    branches: [master]
+
+permissions:
+  contents: read
 
 jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-test.txt
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt -r requirements-test.txt
+      - name: Check Python syntax
+        run: python -m compileall -q -x '(^|[/\\])(\.git|\.?venv|env|__pycache__|\.pytest_cache|\.mypy_cache|\.ruff_cache)([/\\]|$)' .
+      - name: Run tests
+        run: python -m pytest -q tests
+
   sync:
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
