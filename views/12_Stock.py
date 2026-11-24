@@ -620,9 +620,12 @@ lk1, lk2, lk3 = st.columns(3)
 with lk1:
     st.link_button("📊 네이버 증권", "https://finance.naver.com/", use_container_width=True)
     st.link_button("📊 KRX 정보", "http://data.krx.co.kr/", use_container_width=True)
+    st.link_button("🗺️ 국내 코스피200·코스닥150 히트맵", "https://etfshopping.com/treemap", use_container_width=True)
 with lk2:
     st.link_button("🇺🇸 Yahoo Finance", "https://finance.yahoo.com/", use_container_width=True)
     st.link_button("🇺🇸 CNBC Markets", "https://www.cnbc.com/markets/", use_container_width=True)
+    st.link_button("🗺️ Finviz S&P500 히트맵", "https://finviz.com/map", use_container_width=True)
+    st.link_button("🗺️ Finviz 나스닥100 지도", "https://finviz.com/map?t=sec_ndx", use_container_width=True)
 with lk3:
     st.link_button("📈 인베스팅닷컴", "https://kr.investing.com/indices/", use_container_width=True)
     st.link_button("📈 TradingView", "https://www.tradingview.com/", use_container_width=True)
