@@ -31,6 +31,20 @@ with _tc3:
 with _tc4:
     st.link_button("📞 명의도용 차단 (M-safer)", "https://www.msafer.or.kr/", use_container_width=True)
 
+# ── 전 지구 실시간 3D 사이버 위협 관측 (CYBERWATCH · life-info-static) ──────
+# abuse.ch URLhaus + ip-api 지오로케이션 기반 3D 지구본 모니터를 새 탭으로 연결한다.
+CYBER_GLOBE_MONITORS = [
+    (
+        "🌐 CYBERWATCH — 전 지구 실시간 사이버 위협 관측 (3D 지구본)",
+        "https://openmen-gif.github.io/life-info-static/cyber_threat_monitor.html",
+    ),
+]
+
+st.markdown("### 🌐 전 지구 실시간 3D 사이버 위협 관측")
+st.caption("abuse.ch URLhaus 실시간 악성 인프라·피싱 위협을 3D 지구본으로 시각화합니다 (20분 주기 갱신).")
+for _label, _url in CYBER_GLOBE_MONITORS:
+    st.link_button(_label, _url, use_container_width=True)
+
 # ── 자가 점검 체크리스트 ──────────────────────────────────────────────────
 with st.expander("✅ 의심 문자·전화 즉시 점검 체크리스트 (펼쳐서 확인)", expanded=False):
     st.markdown("""

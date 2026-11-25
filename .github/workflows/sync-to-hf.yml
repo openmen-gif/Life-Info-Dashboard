@@ -46,4 +46,5 @@ jobs:
           git config user.name "GitHub Action"
           # username(openmen-gif)은 공개 정보라 하드코딩 — HF_USERNAME 시크릿 누락으로
           # URL 이 깨져 silent fail 하던 문제 제거. HF_TOKEN(Write) 하나만 있으면 배포됨.
-          git push https://openmen-gif:$HF_TOKEN@huggingface.co/spaces/openmen-gif/Life-Info-Dashboard master:main --force
+          # --force 제거: HF main 에 직접 반영된 커밋을 조용히 덮어쓰는 사고를 방지한다.
+          git push https://openmen-gif:$HF_TOKEN@huggingface.co/spaces/openmen-gif/Life-Info-Dashboard master:main
