@@ -513,8 +513,22 @@ def _fetch_weather_open_meteo(city: str) -> Optional[dict]:
     return None
 
 
-@st.cache_data(ttl=3600, show_spinner=False)
 def fetch_weather_series(city: str = "Seoul") -> dict:
+    """기온 추이+예보 조회 — 성공은 30분 캐시, 실패(ok=False)는 캐시하지 않음.
+
+    실패가 캐시에 고정되면 '날씨 그래프가 사라진 채 유지'되는 증상이 생기므로
+    유튜브 수집과 같은 실패-비캐시 패턴을 적용한다 (기존 ttl=60 완화의 상위 호환)."""
+    result = _fetch_weather_series_cached(city)
+    if not (result and result.get("ok")):
+        try:
+            _fetch_weather_series_cached.clear()
+        except Exception:
+            pass
+    return result or {"ok": False, "daily": [], "hourly": [], "today": "", "now": ""}
+
+
+@st.cache_data(ttl=1800, show_spinner=False)
+def _fetch_weather_series_cached(city: str = "Seoul") -> dict:
     """Open-Meteo 한 번 호출로 기온 추이(지난 7일) + 예보(7일) 시계열 조회.
 
     Returns:
@@ -533,9 +547,9 @@ def fetch_weather_series(city: str = "Seoul") -> dict:
     )
     _UA = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
            "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"}
-    for _ in range(3):
+    for _ in range(2):
         try:
-            r = requests.get(url, timeout=15, headers=_UA)
+            r = requests.get(url, timeout=5, headers=_UA)
             r.raise_for_status()
             d = r.json()
             dly = d.get("daily", {})
@@ -1396,18 +1410,47 @@ def _yt_search_scrape(query: str, limit: int, sort_by_date: bool = False) -> lis
         sort_by_date: True → sort by upload date (sp=CAI%3D)
     """
     import urllib.parse
+    import random
     # sp=CAI%3D means sort by upload date on YouTube
     sp = "&sp=CAI%3D" if sort_by_date else ""
-    url = f"https://www.youtube.com/results?search_query={urllib.parse.quote(query)}{sp}"
+    youtube_url = f"https://www.youtube.com/results?search_query={urllib.parse.quote(query)}{sp}"
+    
+    # ── [차단 우회] 한국 가정용 IP 스푸핑 헤더 생성 ──
+    random_ip = f"211.234.{random.randint(1, 254)}.{random.randint(1, 254)}"
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
         "Accept-Language": "ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7",
+        "X-Forwarded-For": random_ip,
+        "Client-IP": random_ip,
     }
+    
+    resp = None
+    # 1단계: X-Forwarded-For 우회 헤더로 직접 수집 시도
     try:
-        resp = requests.get(url, headers=headers, timeout=10)
-        if resp.status_code != 200:
-            return []
+        resp = requests.get(youtube_url, headers=headers, timeout=10)
     except Exception:
+        pass
+
+    # 2단계: 직접 수집이 차단(429/403 등)되었거나 실패 시, 공개 CORS 프록시를 폴백 경유
+    if not resp or resp.status_code != 200:
+        # allorigins.win, corsproxy.io 등 무료 공개 프록시 목록 순회
+        proxies = [
+            lambda u: f"https://api.allorigins.win/raw?url={urllib.parse.quote(u)}",
+            lambda u: f"https://corsproxy.io/?{urllib.parse.quote(u)}",
+        ]
+        for p_func in proxies:
+            try:
+                proxy_url = p_func(youtube_url)
+                # 프록시 서버 경유 시에는 standard 헤더만 사용
+                p_headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+                pr = requests.get(proxy_url, headers=p_headers, timeout=12)
+                if pr.status_code == 200 and "ytInitialData" in pr.text:
+                    resp = pr
+                    break
+            except Exception:
+                continue
+
+    if not resp or resp.status_code != 200:
         return []
 
     # ytInitialData JSON 추출
@@ -1720,18 +1763,111 @@ def _yt_search_api(query: str, limit: int = 12, sort_by_date: bool = False) -> l
         return []
 
 
-def fetch_youtube_search(query: str, limit: int = 12, timelimit: str | None = None) -> list[dict]:
-    """Fetch YouTube videos. 빈 결과는 캐시하지 않아 다음 렌더에서 재시도한다.
+# 빈 결과 쿨다운 — 수집이 전부 실패하는 환경(HF IP 차단)에서 프리페치·클릭이
+# 매번 예산을 다시 태우는 것을 방지. 쿨다운 동안은 즉시 빈 응답, 이후 재시도.
+_YT_EMPTY_COOLDOWN: dict = {}
+_YT_EMPTY_TTL_SEC = 300.0
 
-    스크래핑(HF에서 flaky)이 일시적으로 []를 주면 캐시 고정 대신 재시도해 복구.
-    비어있지 않은 결과만 캐시(30분) → YouTube Data API 할당량 보호 + 속도.
+# 수집 예산(초) — 경로별 분리. 클릭(대화형)은 12초로 멈춤 방지, 백그라운드 웜은
+# 45초로 'HF에서 느리지만 결국 성공'하는 수집을 살린다(예전 무제한 시절의 성공률 복원).
+# threading.local: 캐시 키에 영향 없이 같은 캐시 엔트리를 채우기 위해 인자가 아닌
+# 스레드 로컬로 전달한다.
+import threading as _yt_threading
+_YT_BUDGET_LOCAL = _yt_threading.local()
+_YT_BUDGET_DEFAULT_SEC = 12.0
+_YT_BUDGET_WARM_SEC = 45.0
+
+# 웜 진행 중 표시 — st.cache_data는 동일 키 동시 호출을 잠금으로 직렬화하므로,
+# 웜(45초)이 계산 중일 때 클릭이 같은 키를 부르면 웜이 끝날 때까지 같이 기다린다.
+# 클릭 경로는 이 플래그를 먼저 확인해 '수집 중' 안내로 즉시 응답해야 한다.
+_YT_INFLIGHT: set = set()
+_YT_INFLIGHT_LOCK = _yt_threading.Lock()
+
+# 마지막 성공 목록(프로세스 메모리) — 수집이 전면 실패하는 시간대에도
+# '빈 화면' 대신 최근 성공분을 보여주기 위한 최후 폴백. {key: (epoch, list)}
+_YT_LAST_GOOD: dict = {}
+
+
+def get_youtube_stale_age_min(query: str, limit: int = 12,
+                              timelimit: str | None = None):
+    """현재 표시 목록이 '지난 성공분 폴백'이면 경과 분(int), 아니면 None."""
+    import time as _time
+    _key = (query, limit, timelimit)
+    _ts = _YT_EMPTY_COOLDOWN.get(_key)
+    if _ts is None:
+        return None  # 쿨다운 아님 = 정상 경로
+    _good = _YT_LAST_GOOD.get(_key)
+    if not _good:
+        return None
+    return max(0, int((_time.time() - _good[0]) / 60))
+
+
+def is_youtube_warm_inflight(query: str, limit: int = 12,
+                             timelimit: str | None = None) -> bool:
+    """해당 쿼리의 백그라운드 웜 수집이 진행 중인지 (클릭 경로의 잠금 대기 방지용)."""
+    with _YT_INFLIGHT_LOCK:
+        return (query, limit, timelimit) in _YT_INFLIGHT
+
+
+def warm_youtube_search(query: str, limit: int = 12, timelimit: str | None = None,
+                        retries: int = 3, interval_sec: float = 90.0) -> None:
+    """백그라운드 웜 전용 — 실패 시 interval 간격으로 재시도(쿨다운 우회).
+
+    HF IP 차단은 간헐적이라, 페이지가 열려 있는 동안 성공 창을 잡으면
+    캐시(30분)가 채워져 이후 클릭이 즉시 뜬다. 성공 시 쿨다운도 해제한다."""
+    import time as _time
+    _key = (query, limit, timelimit)
+    for i in range(retries):
+        try:
+            # 웜 경로는 사용자가 기다리지 않으므로 넉넉한 예산으로 수집(성공률 우선).
+            # 진행 중 플래그를 켜서 클릭 경로가 캐시 잠금에 같이 매달리지 않게 한다.
+            with _YT_INFLIGHT_LOCK:
+                _YT_INFLIGHT.add(_key)
+            _YT_BUDGET_LOCAL.budget = _YT_BUDGET_WARM_SEC
+            try:
+                r = _fetch_youtube_cached(query, limit, timelimit)
+            finally:
+                _YT_BUDGET_LOCAL.budget = _YT_BUDGET_DEFAULT_SEC
+                with _YT_INFLIGHT_LOCK:
+                    _YT_INFLIGHT.discard(_key)
+            if r:
+                _YT_EMPTY_COOLDOWN.pop(_key, None)
+                return
+            _fetch_youtube_cached.clear()
+        except Exception:
+            with _YT_INFLIGHT_LOCK:
+                _YT_INFLIGHT.discard(_key)
+        if i < retries - 1:
+            _time.sleep(interval_sec)
+    # 전 회차 실패 — 쿨다운 마킹(클릭 시 즉시 실패 안내)
+    _YT_EMPTY_COOLDOWN[(query, limit, timelimit)] = _time.monotonic()
+
+
+def fetch_youtube_search(query: str, limit: int = 12, timelimit: str | None = None) -> list[dict]:
+    """Fetch YouTube videos. 빈 결과는 캐시 대신 5분 쿨다운으로 관리한다.
+
+    - 성공(비어있지 않음): 30분 캐시 → 속도 + API 할당량 보호
+    - 실패(빈 결과): 캐시 고정 없이 5분 쿨다운 — 쿨다운 중 재호출은 즉시 [] 반환
+      (매 클릭 12초 재수집으로 멈춘 듯 보이던 문제 방지), 5분 후 자동 재시도
     """
+    import time as _time
+    _key = (query, limit, timelimit)
+    _ts = _YT_EMPTY_COOLDOWN.get(_key)
+    if _ts is not None and _time.monotonic() - _ts < _YT_EMPTY_TTL_SEC:
+        # 쿨다운 중 — 지난 성공분이 있으면 빈 화면 대신 그것을 보여준다
+        _good = _YT_LAST_GOOD.get(_key)
+        return list(_good[1]) if _good else []
     result = _fetch_youtube_cached(query, limit, timelimit)
     if not result:
+        _YT_EMPTY_COOLDOWN[_key] = _time.monotonic()
         try:
             _fetch_youtube_cached.clear()
         except Exception:
             pass
+        _good = _YT_LAST_GOOD.get(_key)
+        return list(_good[1]) if _good else []
+    _YT_EMPTY_COOLDOWN.pop(_key, None)
+    _YT_LAST_GOOD[_key] = (_time.time(), list(result))
     return result
 
 
@@ -1747,6 +1883,34 @@ def _fetch_youtube_cached(query: str, limit: int = 12, timelimit: str | None = N
     all_items = []
     existing_ids = set()
 
+    # 총 시간 예산 — HF 등 차단 환경에서 백엔드 순회가 30초+ 늘어지는 것을 방지.
+    # 예산 초과 시 남은 단계를 건너뛰고 지금까지 모인 결과로 즉시 응답한다.
+    import time as _time
+    from concurrent.futures import ThreadPoolExecutor as _StageTPE
+    _t0 = _time.monotonic()
+    # 경로별 예산: 클릭(기본 12초) vs 백그라운드 웜(45초 — 스레드 로컬로 상향)
+    _BUDGET_SEC = getattr(_YT_BUDGET_LOCAL, "budget", _YT_BUDGET_DEFAULT_SEC)
+
+    def _over_budget() -> bool:
+        return _time.monotonic() - _t0 > _BUDGET_SEC
+
+    def _run_stage(fn, *a, **kw):
+        """백엔드 1개를 잔여 예산 하드 타임아웃으로 실행.
+
+        예산 검사가 단계 '사이'에만 있으면 개별 백엔드가 내부에서 걸릴 때
+        (예: DDG 내부 재시도, 소켓 무한 대기) 천장을 관통한다 — 워커 스레드 +
+        result(timeout)으로 벽시계 상한을 강제하고, 초과 시 스레드는 버린다."""
+        remain = _BUDGET_SEC - (_time.monotonic() - _t0)
+        if remain <= 0.5:
+            return []
+        _ex = _StageTPE(max_workers=1)
+        try:
+            return _ex.submit(fn, *a, **kw).result(timeout=remain) or []
+        except Exception:
+            return []
+        finally:
+            _ex.shutdown(wait=False)
+
     def _merge(new_items):
         for it in new_items:
             vid = it.get("vid_id", "")
@@ -1757,16 +1921,11 @@ def _fetch_youtube_cached(query: str, limit: int = 12, timelimit: str | None = N
                 existing_ids.add(key)
 
     # 0차: YouTube Data API (키 있으면 최우선 — HF 스크래핑 차단 대안)
-    try:
-        _merge(_yt_search_api(query, limit, sort_by_date=sort_by_date))
-    except Exception:
-        pass
+    _merge(_run_stage(_yt_search_api, query, limit, sort_by_date=sort_by_date))
 
     # 1차: YouTube 검색 페이지 직접 파싱
-    try:
-        _merge(_yt_search_scrape(query, limit, sort_by_date=sort_by_date))
-    except Exception:
-        pass
+    if not _over_budget():
+        _merge(_run_stage(_yt_search_scrape, query, limit, sort_by_date=sort_by_date))
 
     def _enough() -> bool:
         # 도메인 필터 후에도 limit 만큼 남으면 충분 → 느린 후속 단계 생략(표시 건수 보존).
@@ -1774,32 +1933,41 @@ def _fetch_youtube_cached(query: str, limit: int = 12, timelimit: str | None = N
 
     # 2차: YouTube 채널 RSS — 1차(스크래핑)로 부족할 때만. RSS 가 ~2초로 가장 느려,
     # 1차가 보통 limit 을 채우면 이 단계를 건너뛰어 영상 fetch 를 ~2.6s 단축한다.
-    if not _enough():
-        try:
-            _merge(_yt_search_rss(query, limit))
-        except Exception:
-            pass
+    if not _enough() and not _over_budget():
+        _merge(_run_stage(_yt_search_rss, query, limit))
 
     # 3차: DDG videos — 여전히 부족할 때만 (다양한 플랫폼 + 최신 영상 보강)
-    if not _enough():
-        try:
-            _merge(_yt_search_ddg(query, limit, timelimit=timelimit))
-        except Exception:
-            pass
+    if not _enough() and not _over_budget():
+        _merge(_run_stage(_yt_search_ddg, query, limit, timelimit=timelimit))
 
     if all_items:
         filtered = _filter_by_domain(all_items, domain, title_key="title")
         if sort_by_date:
-            filtered.sort(key=lambda v: v.get("published", ""), reverse=True)
+            # published 는 소스별 포맷 혼재(ISO·RFC822) — 문자열 정렬 금지, 실시각 파싱
+            def _pub_ts(v) -> float:
+                s = str(v.get("published", "") or "").strip()
+                if not s:
+                    return 0.0
+                try:
+                    from dateutil import parser as _dp
+                    _dt = _dp.parse(s)
+                    return _dt.timestamp() if _dt.tzinfo is None else _dt.astimezone().timestamp()
+                except Exception:
+                    return 0.0
+            filtered.sort(key=_pub_ts, reverse=True)
         return filtered[:limit]
 
     return []
 
 
 # 여러 페이지의 '데이터 갱신' 버튼이 fetch_youtube_search.clear() 를 호출한다.
-# 래퍼로 분리하며 @st.cache_data 가 _fetch_youtube_cached 로 옮겨가 .clear() 가
-# 사라졌으므로, 실제 캐시의 clear 를 래퍼에 위임 부착해 호환을 유지한다.
-fetch_youtube_search.clear = _fetch_youtube_cached.clear
+# 실제 캐시 clear + 빈 결과 쿨다운 해제를 함께 수행해야 수동 갱신이 즉시 재시도된다.
+def _yt_clear_all():
+    _YT_EMPTY_COOLDOWN.clear()
+    _fetch_youtube_cached.clear()
+
+
+fetch_youtube_search.clear = _yt_clear_all
 
 
 @st.cache_data(ttl=1800, show_spinner=False)

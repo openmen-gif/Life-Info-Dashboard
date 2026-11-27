@@ -227,8 +227,16 @@ OIL_INDICES = {
 with tab_oil:
     st.markdown("## 🛢️ 국제 유가·에너지 실시간 시세")
 
-    # 유가 데이터 1회 fetch → 재활용
-    _oil_data = {sym: fetch_stock_data(sym, period="5d") for sym in OIL_INDICES}
+    # 유가 데이터 1회 fetch → 재활용 — 4종 병렬 수집(직렬 대기 제거, 10초 타임아웃)
+    from concurrent.futures import ThreadPoolExecutor as _TPE
+    _oil_data = {}
+    with _TPE(max_workers=len(OIL_INDICES)) as _ex:
+        _futs = {_ex.submit(fetch_stock_data, sym, "5d"): sym for sym in OIL_INDICES}
+        for _f in _futs:
+            try:
+                _oil_data[_futs[_f]] = _f.result(timeout=10.0)
+            except Exception:
+                _oil_data[_futs[_f]] = {"ok": False}
 
     oil_cols = st.columns(len(OIL_INDICES))
     for col, (symbol, (name, icon)) in zip(oil_cols, OIL_INDICES.items()):
@@ -329,10 +337,10 @@ with tab_expert:
 
         st.markdown("---")
         st.markdown("### 🎬 관련 영상")
-        from utils.expert_template import _render_video_card
+        from utils.expert_template import _render_video_card, published_ts
         import math as _math
         if data.get("youtube"):
-            videos = sorted(data["youtube"], key=lambda v: v.get("published", ""), reverse=True)
+            videos = sorted(data["youtube"], key=published_ts, reverse=True)
             _per_page = 4
             _total_pages = max(1, _math.ceil(len(videos) / _per_page))
             _pk = "yt_fx_expert"

@@ -391,8 +391,19 @@ with tab_watchlist:
                     st.session_state.global_chart_period = val
 
             wl_period = st.selectbox("차트 기간", _periods, index=_default_idx, key="wl_period_sel", on_change=_on_wl_period_change)
-            for sym in st.session_state.watchlist:
-                d = fetch_stock_data_long(sym, period="1y")  # 1y 1회 조회(6시간 장기 캐시) → 로컬 슬라이스
+            # 종목별 1y 이력을 병렬 사전 수집 — 첫 로드 직렬 대기 제거 (10초 타임아웃)
+            from concurrent.futures import ThreadPoolExecutor
+            _syms = list(st.session_state.watchlist)
+            _res = {}
+            with ThreadPoolExecutor(max_workers=min(len(_syms), 8)) as _ex:
+                _futs = {_ex.submit(fetch_stock_data_long, s, "1y"): s for s in _syms}
+                for _f in _futs:
+                    try:
+                        _res[_futs[_f]] = _f.result(timeout=10.0)
+                    except Exception:
+                        _res[_futs[_f]] = {"ok": False}
+            for sym in _syms:
+                d = _res.get(sym) or {"ok": False}
                 if d.get("ok") and d.get("history"):
                     st.markdown(f"**{sym}**")
                     render_line_tight(slice_history(d["history"], wl_period))
@@ -567,9 +578,9 @@ with tab_expert:
 
         st.markdown("---")
         st.markdown("### 🎬 관련 영상")
-        from utils.expert_template import _render_paginated_videos
+        from utils.expert_template import _render_paginated_videos, published_ts
         if data.get("youtube"):
-            videos = sorted(data["youtube"], key=lambda v: v.get("published", ""), reverse=True)
+            videos = sorted(data["youtube"], key=published_ts, reverse=True)
             _render_paginated_videos(videos, "yt_stock_expert")
         else:
             st.info("관련 영상을 찾지 못했습니다.")
@@ -609,9 +620,12 @@ lk1, lk2, lk3 = st.columns(3)
 with lk1:
     st.link_button("📊 네이버 증권", "https://finance.naver.com/", use_container_width=True)
     st.link_button("📊 KRX 정보", "http://data.krx.co.kr/", use_container_width=True)
+    st.link_button("🗺️ 국내 코스피200·코스닥150 히트맵", "https://etfshopping.com/treemap", use_container_width=True)
 with lk2:
     st.link_button("🇺🇸 Yahoo Finance", "https://finance.yahoo.com/", use_container_width=True)
     st.link_button("🇺🇸 CNBC Markets", "https://www.cnbc.com/markets/", use_container_width=True)
+    st.link_button("🗺️ Finviz S&P500 히트맵", "https://finviz.com/map", use_container_width=True)
+    st.link_button("🗺️ Finviz 나스닥100 지도", "https://finviz.com/map?t=sec_ndx", use_container_width=True)
 with lk3:
     st.link_button("📈 인베스팅닷컴", "https://kr.investing.com/indices/", use_container_width=True)
     st.link_button("📈 TradingView", "https://www.tradingview.com/", use_container_width=True)

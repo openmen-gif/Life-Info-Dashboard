@@ -5,6 +5,63 @@
 이는 사용자가 별도의 FastAPI 백엔드를 띄우지 않고도 즉시 사용 가능하도록 보장한다.
 """
 import os
+from pathlib import Path
+
+
+def _external_env_path():
+    """OneDrive 밖에 둔 로컬 비밀 키 파일 경로.
+
+    LIFE_INFO_ENV_FILE 환경변수가 있으면 그 경로, 없으면
+    ~/_local_secrets/life-info-dashboard/.env 를 쓴다.
+    """
+    override = os.getenv("LIFE_INFO_ENV_FILE")
+    if override:
+        return Path(override)
+    return Path.home() / "_local_secrets" / "life-info-dashboard" / ".env"
+
+
+def load_external_env():
+    """외부 비밀 키 파일이 있을 때만 읽는다(이미 있는 환경변수는 덮어쓰지 않음).
+
+    파일이 없거나 python-dotenv 가 없으면 아무 일도 하지 않는다 — HF Spaces 는
+    Space 시크릿(환경변수)을 그대로 쓴다. 읽었으면 True 를 돌려준다.
+
+    경로 해석·존재 확인·읽기 중 오류(권한 없음, 인코딩 오류, 확인 뒤 파일이
+    사라짐 등)는 경고만 남기고 False 를 돌려준다 — config import 가 죽지 않게.
+    경고에는 예외 종류만 남기고 파일 내용·값은 출력하지 않는다.
+    """
+    try:
+        from dotenv import load_dotenv
+    except ImportError:
+        return False
+    try:
+        path = _external_env_path()
+        if not path.is_file():
+            return False
+        load_dotenv(path, override=False)
+    except (OSError, UnicodeError, ValueError, RuntimeError) as exc:
+        import warnings
+        warnings.warn(
+            f"외부 비밀 키 파일을 읽지 못해 건너뜀 ({type(exc).__name__})",
+            RuntimeWarning,
+            stacklevel=2,
+        )
+        return False
+    return True
+
+
+try:
+    # 로컬 실행 시 .env 파일을 실제 프로세스 환경변수로 로드 — 이게 없으면 아래 모든
+    # os.getenv() 키 조회가 .env 파일 내용을 못 읽는다(2026-07-23 발견: 지금까지
+    # NAVER/OpenWeather/YouTube 키도 로컬에선 이 이유로 전부 미적용 상태였음).
+    # HF Spaces 등 .env 파일이 없는 배포 환경에서는 조용히 스킵된다(no-op).
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
+
+# 그다음 OneDrive 밖 비밀 키 파일(있을 때만). 위 .env 나 기존 환경변수가 우선한다.
+load_external_env()
 
 _explicit = os.getenv("LIFE_MODE")
 
@@ -33,3 +90,10 @@ OPENWEATHER_API_KEY = os.getenv("OPENWEATHER_API_KEY", "")
 # 발급: https://console.cloud.google.com → YouTube Data API v3 사용설정 → API 키 (무료 일 10,000 units)
 YOUTUBE_API_KEY = os.getenv("YOUTUBE_API_KEY", "")
 HAS_YOUTUBE_API = bool(YOUTUBE_API_KEY)
+
+# 국토교통부 아파트매매 실거래가 (선택) — 키 있으면 부동산 페이지에서 실제 시세 조회 가능.
+# 키 없으면 시세 조회 섹션은 안내 메시지만 표시하고 나머지 기능은 그대로 동작.
+# 발급: https://www.data.go.kr/data/15126469/openapi.do → 활용신청(자동승인) → 마이페이지
+#       개발계정에서 Decoding 키 확인 (무료, 개발계정 일 10,000건)
+MOLIT_API_KEY = os.getenv("MOLIT_API_KEY", "")
+HAS_MOLIT = bool(MOLIT_API_KEY)

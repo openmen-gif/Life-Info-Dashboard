@@ -29,6 +29,37 @@ with _sc7:
 with _sc8:
     st.link_button("📞 행안부 재난문자", "https://www.safekorea.go.kr/idsiSFK/neo/sfk/cs/sfc/dis/disasterMsgList.jsp", use_container_width=True)
 
+# ── 전 지구 실시간 3D 재난 관측 (지구본 기반 웹 서비스 · life-info-static) ───
+# 정적 3D 지구본 모니터는 GitHub Pages(openmen-gif/life-info-static)에서 호스팅되며
+# USGS · GDACS · NOAA · Smithsonian GVP · Open-Meteo CAMS · Safecast 피드를 연동한다.
+_STATIC_BASE = "https://openmen-gif.github.io/life-info-static"
+GLOBAL_DISASTER_MONITORS = [
+    ("🌍 지진 (SEISMOS)", f"{_STATIC_BASE}/global_seismic_monitor.html"),
+    ("🌀 태풍·열대저기압", f"{_STATIC_BASE}/typhoon_monitor.html"),
+    ("🔥 산불 (전 지구)", f"{_STATIC_BASE}/wildfire_monitor.html"),
+    ("🌊 홍수 (전 지구)", f"{_STATIC_BASE}/flood_monitor.html"),
+    ("🏜️ 가뭄 (전 지구)", f"{_STATIC_BASE}/drought_monitor.html"),
+    ("🌋 화산활동", f"{_STATIC_BASE}/volcano_monitor.html"),
+    ("🌊 쓰나미 경보", f"{_STATIC_BASE}/tsunami_monitor.html"),
+    ("😷 대기질·오존", f"{_STATIC_BASE}/airquality_monitor.html"),
+    ("☀️ 지자기 폭풍", f"{_STATIC_BASE}/spaceweather_monitor.html"),
+    ("☢️ 환경 방사선", f"{_STATIC_BASE}/radiation_monitor.html"),
+]
+
+st.markdown("---")
+st.markdown("### 🌍 전 지구 실시간 3D 재난 관측 (지구본)")
+st.caption(
+    "USGS·GDACS·NOAA·Smithsonian GVP·CAMS·Safecast 실시간 데이터를 3D 지구본으로 시각화합니다. "
+    "버튼을 클릭하면 새 탭에서 인터랙티브 지구본 모니터가 열립니다."
+)
+
+for _row_start in range(0, len(GLOBAL_DISASTER_MONITORS), 5):
+    _row_items = GLOBAL_DISASTER_MONITORS[_row_start:_row_start + 5]
+    _cols = st.columns(len(_row_items))
+    for _col, (_label, _url) in zip(_cols, _row_items):
+        with _col:
+            st.link_button(_label, _url, use_container_width=True)
+
 # ── 실시간 강수 레이더 (Rainviewer) ───────────────────────────────────────
 # 기상청 정적 합성 PNG(repositary/image/radar/...)는 KMA 가 경로를 폐기해 에러를
 # 반환하므로, 임베드는 Rainviewer(X-Frame-Options: ALLOWALL)로 대체한다.

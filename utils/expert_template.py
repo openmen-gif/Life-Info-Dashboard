@@ -102,6 +102,22 @@ def _render_news_trends(news_list: list[dict], title: str):
         st.caption(f"📰 주요 출처: {src_text}")
 
 
+def published_ts(v: dict) -> float:
+    """published 문자열(ISO·RFC822 등 소스별 혼재)을 타임스탬프로 변환 — 정렬용.
+
+    문자열 그대로 정렬하면 RSS 포맷("Sat, 18 Jul ...")이 요일 알파벳순으로 섞여
+    '정렬 안 됨'으로 보이는 버그가 생긴다. 반드시 이 함수를 정렬 키로 쓸 것."""
+    s = str(v.get("published", "") or "").strip()
+    if not s:
+        return 0.0
+    try:
+        from dateutil import parser as _dp
+        dt = _dp.parse(s)
+        return dt.timestamp() if dt.tzinfo is None else dt.astimezone().timestamp()
+    except (ValueError, OverflowError, TypeError):
+        return 0.0
+
+
 def _parse_view_count(vc) -> int:
     """Parse view count string to int for sorting."""
     if not vc:
@@ -118,7 +134,9 @@ def _show_empty_state(msg: str):
     st.warning(
         f"⚠️ {msg}\n\n"
         "클라우드(HF) IP 레이트리밋이거나 일시적 수집 실패일 수 있어요. "
-        "상단 **🔄 데이터 갱신**을 누르거나 잠시 후 새로고침하면 보통 복구됩니다."
+        "백그라운드에서 몇 분 내 자동 재수집을 시도합니다 — 잠시 후 새로고침하거나, "
+        "지금 바로 시도하려면 상단 **🔄 데이터 갱신**을 눌러주세요.  \n"
+        "*(팁: 지속적으로 실패할 경우, Hugging Face Space 설정의 Repository Secrets에 **YOUTUBE_API_KEY** (YouTube Data API v3)를 등록하면 차단 없이 안정적인 수집이 가능합니다.)*"
     )
 
 
@@ -191,7 +209,12 @@ def _render_video_card(v: dict, show_desc: bool = False):
         else:
             meta_parts.append(f"👁 {vc:,}회")
     if v.get("published"):
-        meta_parts.append(f"📅 {v['published'][:10]}")
+        # 소스별 포맷 혼재(ISO·RFC822) — 파싱해 YYYY-MM-DD로 통일 표기
+        _ts = published_ts(v)
+        if _ts:
+            meta_parts.append(f"📅 {datetime.datetime.fromtimestamp(_ts).strftime('%Y-%m-%d')}")
+        else:
+            meta_parts.append(f"📅 {str(v['published'])[:10]}")
     if meta_parts:
         st.caption(" | ".join(meta_parts))
 
@@ -204,20 +227,83 @@ def _render_video_card(v: dict, show_desc: bool = False):
 
 
 def render_youtube_section(query: str, limit: int = 12, per_page: int = 4,
-                           sort: str = "views") -> list[dict]:
-    """Shared helper: render video grid with page navigation + sort toggle.
+                           sort: str = "views", auto_load: bool = False) -> list[dict]:
+    """Shared helper: 영상 그리드 섹션(지연 로드 게이트 + 정렬 + 페이지네이션).
 
-    Args:
-        query: search query
-        limit: total videos to fetch
-        per_page: videos per page
-        sort: default sort — "views" (조회수순) or "latest" (최신순)
-    """
+    화면부는 내부 fragment(_youtube_section_fragment)가 담당해 버튼·정렬·페이지
+    클릭이 섹션만 재실행되고, 반환값(다운로드 리포트용)은 게이트가 열린 뒤의
+    전체 실행 시점에 캐시 히트로 채워진다."""
     _tl = "d" if sort == "latest" else None
-    videos = fetch_youtube_search(query, limit=limit, timelimit=_tl)
+    _yt_gate = f"yt_loaded_{_qkey(query)}"
+    _youtube_section_fragment(query, limit, per_page, sort, _tl, _yt_gate, auto_load)
+    if st.session_state.get(_yt_gate):
+        try:
+            return fetch_youtube_search(query, limit=limit, timelimit=_tl) or []
+        except Exception:
+            return []
+    return []
+
+
+@st.fragment
+def _youtube_section_fragment(query: str, limit: int, per_page: int,
+                              sort: str, _tl, _yt_gate: str,
+                              auto_load: bool = False) -> None:
+    # 지연 로드 게이트 — 유튜브 수집(수 초)은 페이지 첫 로딩의 최대 지연 요인이라
+    # 버튼 클릭 시에만 표시한다. fragment라 클릭 시 이 섹션만 재실행된다.
+    if auto_load:
+        st.session_state[_yt_gate] = True
+    if not st.session_state.get(_yt_gate):
+        # 백그라운드 프리페치 — 첫 로딩은 막지 않되, 수집·1차 정렬 대상 데이터를
+        # 미리 캐시에 데워 버튼 클릭 시 즉시 표시되게 한다 (세션당 1회)
+        _warm_key = f"yt_warm_{_qkey(query)}"
+        if not st.session_state.get(_warm_key):
+            st.session_state[_warm_key] = True
+            import threading
+
+            def _warm(q=query, lm=limit, tl=_tl):
+                try:
+                    # 실패 시 90초 간격 자동 재시도(3회) — HF 간헐 차단의 성공 창을 잡아
+                    # 캐시를 채워두면 이후 클릭이 즉시 뜬다 (쿨다운 우회 웜 전용 경로)
+                    from utils.data_fetcher import warm_youtube_search
+                    warm_youtube_search(q, limit=lm, timelimit=tl)
+                except Exception:
+                    pass
+
+            _t = threading.Thread(target=_warm, daemon=True)
+            # ScriptRunContext 부착 — 없으면 st.cache_data가 스레드에서 캐시를 못 채워
+            # 프리페치가 조용히 무효가 된다 (Streamlit 공식 스레드 패턴)
+            try:
+                from streamlit.runtime.scriptrunner import add_script_run_ctx, get_script_run_ctx
+                add_script_run_ctx(_t, get_script_run_ctx())
+            except Exception:
+                pass
+            _t.start()
+        st.caption("페이지를 빠르게 열기 위해 영상 목록은 버튼을 누를 때 표시합니다 (백그라운드에서 미리 준비 중).")
+        if st.button("관련 영상 보기", key=f"{_yt_gate}_btn", use_container_width=True):
+            st.session_state[_yt_gate] = True
+            st.rerun(scope="fragment")
+        return
+
+    # 웜(백그라운드 수집)이 진행 중이면 캐시 잠금에 매달리지 않고 즉시 안내 —
+    # 잠금 특성상 같은 키를 부르면 웜(최대 45초)이 끝날 때까지 같이 기다리게 된다.
+    from utils.data_fetcher import is_youtube_warm_inflight
+    if is_youtube_warm_inflight(query, limit, _tl):
+        st.info("영상 목록을 백그라운드에서 수집하고 있어요 — 잠시 후 아래 버튼으로 확인해 주세요.")
+        if st.button("목록 확인", key=f"{_yt_gate}_chk", use_container_width=True):
+            st.rerun(scope="fragment")
+        return
+
+    # 클릭 즉시 피드백 — 수집 중임을 스피너로 표시 (무반응처럼 보이는 문제 해소)
+    with st.spinner("영상 목록 준비 중... (최대 12초)"):
+        videos = fetch_youtube_search(query, limit=limit, timelimit=_tl)
     if not videos:
         _show_empty_state("관련 영상을 찾지 못했습니다.")
-        return []
+        return
+    # 지난 성공분 폴백 표시 중이면 정직하게 안내
+    from utils.data_fetcher import get_youtube_stale_age_min
+    _age = get_youtube_stale_age_min(query, limit, _tl)
+    if _age is not None:
+        st.caption(f"⚠️ 지금은 수집이 일시 실패 상태라 {_age}분 전 성공한 목록을 표시 중입니다 — 백그라운드에서 자동 재수집합니다.")
 
     # Sort toggle checkbox
     sort_key = f"sort_toggle_{_qkey(query)}"
@@ -229,9 +315,13 @@ def render_youtube_section(query: str, limit: int = 12, per_page: int = 4,
         active_sort = "latest" if use_latest else "views"
 
     if active_sort == "latest":
-        videos_sorted = sorted(videos, key=lambda v: v.get("published", ""), reverse=True)
+        videos_sorted = sorted(videos, key=published_ts, reverse=True)
     else:
-        videos_sorted = sorted(videos, key=lambda v: _parse_view_count(v.get("view_count")), reverse=True)
+        videos_sorted = sorted(
+            videos,
+            key=lambda v: (_parse_view_count(v.get("view_count")), published_ts(v)),
+            reverse=True,
+        )
 
     # Summary metrics
     total = len(videos_sorted)
@@ -246,11 +336,9 @@ def render_youtube_section(query: str, limit: int = 12, per_page: int = 4,
     channels = set(v.get("uploader", "") for v in videos_sorted if v.get("uploader"))
     mc3.metric("채널 수", f"{len(channels)}개")
 
-    # Pagination (공통 헬퍼 사용)
+    # Pagination (공통 헬퍼 사용 — 중첩 fragment)
     page_key = f"yt_page_{_qkey(query)}"
     _render_paginated_videos(videos_sorted, page_key, per_page)
-
-    return videos_sorted
 
 
 def render_expert_page(
@@ -441,23 +529,29 @@ def render_expert_page(
                     st.caption("👆 위 버튼을 눌러 이 카테고리 뉴스를 불러오세요.")
         st.divider()
 
-    # ── 자동 뉴스 로딩 + 경향 분석 ──────────────────────────────────────
+    # ── 최신 뉴스 + 경향 분석 — 지연 로드(버튼) 게이트 (D단계 최적화) ──
     if auto_news_query:
         st.markdown(f"## 📰 {title} 최신 뉴스")
         st.caption(f"검색어: `{auto_news_query}`")
-        auto_news = fetch_news_search(auto_news_query, limit=8, timelimit=_news_timelimit)
-        if auto_news:
-            with st.container(border=True):
-                for n in auto_news[:5]:
-                    st.markdown(
-                        f"📰 **[{n['title']}]({n['link']})**  \n"
-                        f"  <small style='color:var(--muted)'>{n.get('source', '')} · {n.get('published', '')}</small>",
-                        unsafe_allow_html=True,
-                    )
-            # 뉴스 경향 분석
-            _render_news_trends(auto_news, title)
+        _news_gate = f"auto_news_loaded_{_qkey(auto_news_query)}"
+        if not st.session_state.get(_news_gate):
+            if st.button("최신 뉴스 불러오기", key=f"{_news_gate}_btn", use_container_width=True):
+                st.session_state[_news_gate] = True
+                st.rerun()
         else:
-            _show_empty_state(f"{title} 관련 뉴스를 가져오지 못했습니다.")
+            auto_news = fetch_news_search(auto_news_query, limit=8, timelimit=_news_timelimit)
+            if auto_news:
+                with st.container(border=True):
+                    for n in auto_news[:5]:
+                        st.markdown(
+                            f"📰 **[{n['title']}]({n['link']})**  \n"
+                            f"  <small style='color:var(--muted)'>{n.get('source', '')} · {n.get('published', '')}</small>",
+                            unsafe_allow_html=True,
+                        )
+                # 뉴스 경향 분석
+                _render_news_trends(auto_news, title)
+            else:
+                _show_empty_state(f"{title} 관련 뉴스를 가져오지 못했습니다.")
         st.divider()
 
     # ── 전문가 검색 & 분석 ────────────────────────────────────────────────
@@ -550,7 +644,7 @@ def render_expert_page(
         st.markdown(f"### 🎬 관련 영상")
         if data.get("youtube"):
             if youtube_sort == "latest":
-                videos = sorted(data["youtube"], key=lambda v: v.get("published", ""), reverse=True)
+                videos = sorted(data["youtube"], key=published_ts, reverse=True)
             else:
                 videos = sorted(data["youtube"], key=lambda v: _parse_view_count(v.get("view_count")), reverse=True)
             _render_paginated_videos(videos, f"yt_ep_{title}")
