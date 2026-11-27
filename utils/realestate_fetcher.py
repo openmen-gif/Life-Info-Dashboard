@@ -10,15 +10,23 @@ API 명세(data.go.kr 스웨거 문서 2026-07-23 확인 기준):
 데이터포맷이 XML로 고정 등록되어 있어 XML로 요청·파싱한다.
 """
 import datetime
+import threading
+import time
 import xml.etree.ElementTree as ET
 from concurrent.futures import ThreadPoolExecutor
 
 import requests
-import streamlit as st
 
 from utils.config import MOLIT_API_KEY
 
 MOLIT_BASE_URL = "https://apis.data.go.kr/1613000/RTMSDataSvcAptTrade/getRTMSDataSvcAptTrade"
+
+# 성공 결과만 보관하는 경량 TTL 캐시 — API 장애(code=04 등) 빈 결과가 1시간 캐시되는 문제 차단 +
+# HF 무료 컨테이너 메모리 보호를 위해 최대 엔트리 수를 제한한다.
+_CACHE_TTL_SEC = 3600
+_CACHE_MAX_ENTRIES = 32
+_REGION_CACHE: dict[tuple[str, int], tuple[float, list[dict]]] = {}
+_CACHE_LOCK = threading.Lock()
 
 # 법정동코드(시군구 단위, 앞 5자리). 서울 25개구·6대 광역시·세종은 전수,
 # 그 외 도 단위는 주요 시·군 위주로 담았다 — 행정구역 개편으로 최신 코드가
@@ -123,10 +131,34 @@ def _parse_amount(raw: str) -> int:
         return 0
 
 
-def _fetch_month(lawd_cd: str, deal_ymd: str) -> list[dict]:
-    """단일 (지역, 계약년월) 실거래 내역 조회. 실패·키없음이면 빈 리스트."""
+def clear_region_cache() -> None:
+    """테스트 및 수동 재시도용 지역 실거래 캐시 초기화."""
+    with _CACHE_LOCK:
+        _REGION_CACHE.clear()
+
+
+def _format_api_error(code: str | None, msg: str | None, http_status: int | None = None) -> str:
+    """공공데이터포털·국토부 API 오류 코드를 사용자 안내 문구로 변환한다."""
+    code_s = (code or "").strip()
+    msg_s = (msg or "").strip()
+    if code_s == "04":
+        return "국토교통부 실거래가 API 일시 장애/점검 중입니다 (코드 04: HTTP_ERROR)."
+    if code_s == "22":
+        return "국토교통부 실거래가 API 일일 호출 한도를 초과했습니다 (코드 22)."
+    if code_s in ("30", "31", "32") or http_status in (401, 403):
+        return f"국토교통부 실거래가 API 인증 키 오류입니다 (코드 {code_s or http_status})."
+    if code_s:
+        detail = f"{code_s}: {msg_s}" if msg_s else code_s
+        return f"국토교통부 실거래가 API 오류가 발생했습니다 ({detail})."
+    if http_status and http_status >= 400:
+        return f"국토교통부 실거래가 API 응답 오류입니다 (HTTP {http_status})."
+    return "국토교통부 실거래가 API 연결에 실패했습니다."
+
+
+def _fetch_month_detail(lawd_cd: str, deal_ymd: str) -> tuple[list[dict], str | None]:
+    """단일 (지역, 계약년월) 실거래 내역과 오류 사유를 함께 반환한다."""
     if not MOLIT_API_KEY:
-        return []
+        return [], "국토교통부 실거래가 API 키가 설정되지 않았습니다."
     params = {
         "serviceKey": MOLIT_API_KEY,
         "LAWD_CD": lawd_cd,
@@ -136,11 +168,30 @@ def _fetch_month(lawd_cd: str, deal_ymd: str) -> list[dict]:
     }
     try:
         r = requests.get(MOLIT_BASE_URL, params=params, timeout=10)
-        r.raise_for_status()
-        root = ET.fromstring(r.content)
-        result_code = root.findtext("./header/resultCode")
-        if result_code not in (None, "000", "00", "0"):  # 실제 API 성공 코드는 "000"(2026-07-23 실측 확인)
-            return []
+        http_status = r.status_code
+        root = None
+        try:
+            root = ET.fromstring(r.content)
+        except ET.ParseError:
+            root = None
+
+        if root is not None:
+            # 공공데이터포털 게이트웨이 오류는 cmmMsgHeader(returnReasonCode/errMsg)로 내려온다.
+            gw_code = root.findtext(".//cmmMsgHeader/returnReasonCode")
+            gw_msg = root.findtext(".//cmmMsgHeader/errMsg") or root.findtext(".//cmmMsgHeader/returnAuthMsg")
+            if gw_code and gw_code not in ("000", "00", "0"):
+                return [], _format_api_error(gw_code, gw_msg, http_status)
+
+            result_code = root.findtext("./header/resultCode")
+            result_msg = root.findtext("./header/resultMsg")
+            if result_code not in (None, "000", "00", "0"):  # 실제 API 성공 코드는 "000"(2026-07-23 실측 확인)
+                return [], _format_api_error(result_code, result_msg, http_status)
+
+        if http_status >= 400:
+            return [], _format_api_error(None, None, http_status)
+        if root is None:
+            return [], "국토교통부 실거래가 API 응답 형식을 해석하지 못했습니다."
+
         records = []
         for item in root.findall("./body/items/item"):
             y, m, d = _text(item, "dealYear"), _text(item, "dealMonth"), _text(item, "dealDay")
@@ -159,9 +210,17 @@ def _fetch_month(lawd_cd: str, deal_ymd: str) -> list[dict]:
                 "거래금액_만원": _parse_amount(_text(item, "dealAmount")),
                 "계약일": f"{y}-{m.zfill(2)}-{d.zfill(2)}",
             })
-        return records
+        return records, None
+    except requests.Timeout:
+        return [], "국토교통부 실거래가 API 응답 시간이 초과되었습니다."
     except Exception:
-        return []
+        return [], "국토교통부 실거래가 API 연결 중 오류가 발생했습니다."
+
+
+def _fetch_month(lawd_cd: str, deal_ymd: str) -> list[dict]:
+    """단일 (지역, 계약년월) 실거래 내역 조회. 실패·키없음이면 빈 리스트(하위 호환)."""
+    records, _ = _fetch_month_detail(lawd_cd, deal_ymd)
+    return records
 
 
 def _recent_deal_ymds(months: int) -> list[str]:
@@ -177,33 +236,67 @@ def _recent_deal_ymds(months: int) -> list[str]:
     return out
 
 
-@st.cache_data(ttl=3600, show_spinner=False)  # 1시간 캐시 — HF 무료 컨테이너 메모리 부담 완화(6h->1h)
-def _fetch_region_history(lawd_cd: str, months: int) -> list[dict]:
-    """최근 N개월, 해당 지역의 단지명 필터 없는 전체 실거래 내역 (단지명 매칭·유사명칭 제안 공용).
+def _fetch_region_history_with_status(lawd_cd: str, months: int) -> tuple[list[dict], str | None]:
+    """최근 N개월 지역 실거래 내역과 오류 상태를 반환한다.
 
-    2026-07-22 실거래 조회 직후 HF Space가 두 차례 exit 139(SIGSEGV)로 죽는 것을 확인 —
-    무료 컨테이너에서 대용량 지역 전체 데이터를 오래 캐시에 들고 있는 게 유력한 원인으로
-    보여, 동시 요청 수·캐시 보존 시간을 보수적으로 줄였다(확정 원인은 서버 로그 미확보로
-    불확실 — 재발하면 이 함수 자체를 더 축소해야 함)."""
+    모든 월 요청이 오류로 실패한 경우에는 캐시에 저장하지 않아,
+    외부 API 복구 직후 즉시 정상 재조회되도록 보장한다.
+    """
+    cache_key = (lawd_cd, months)
+    now_mono = time.monotonic()
+    with _CACHE_LOCK:
+        cached = _REGION_CACHE.get(cache_key)
+        if cached and (now_mono - cached[0]) < _CACHE_TTL_SEC:
+            return list(cached[1]), None
+
     deal_ymds = _recent_deal_ymds(months)
     all_records: list[dict] = []
+    errors: list[str] = []
+    ok_months = 0
+
     with ThreadPoolExecutor(max_workers=min(len(deal_ymds), 2)) as executor:
-        futures = [executor.submit(_fetch_month, lawd_cd, ymd) for ymd in deal_ymds]
+        futures = [executor.submit(_fetch_month_detail, lawd_cd, ymd) for ymd in deal_ymds]
         for future in futures:
             try:
-                all_records.extend(future.result(timeout=15))
+                recs, err = future.result(timeout=15)
             except Exception:
+                errors.append("국토교통부 실거래가 API 응답 시간이 초과되었습니다.")
                 continue
-    return all_records
+            if err:
+                errors.append(err)
+            else:
+                ok_months += 1
+                all_records.extend(recs)
+
+    # 정상 응답을 1개월도 못 받고 오류만 발생한 경우: 캐시하지 않고 오류 사유를 그대로 반환
+    if ok_months == 0 and errors:
+        return [], errors[0]
+
+    with _CACHE_LOCK:
+        if len(_REGION_CACHE) >= _CACHE_MAX_ENTRIES:
+            oldest_key = min(_REGION_CACHE, key=lambda k: _REGION_CACHE[k][0])
+            _REGION_CACHE.pop(oldest_key, None)
+        _REGION_CACHE[cache_key] = (time.monotonic(), list(all_records))
+    return all_records, None
+
+
+def _fetch_region_history(lawd_cd: str, months: int) -> list[dict]:
+    """최근 N개월, 해당 지역의 단지명 필터 없는 전체 실거래 내역(하위 호환)."""
+    records, _ = _fetch_region_history_with_status(lawd_cd, months)
+    return records
 
 
 def _name_tokens(apt_name: str) -> list[str]:
     return [t for t in apt_name.strip().split() if t]
 
 
-def fetch_apt_trade_history(lawd_cd: str, apt_name: str, months: int = 12) -> list[dict]:
-    """최근 N개월 실거래 내역 중 단지명이 일치하는 거래만 모아 계약일 오름차순으로 반환."""
-    all_records = _fetch_region_history(lawd_cd, months)
+def fetch_apt_trade_history_with_status(
+    lawd_cd: str, apt_name: str, months: int = 12
+) -> tuple[list[dict], str | None]:
+    """최근 N개월 실거래 내역과 API 오류 상태를 함께 반환한다."""
+    all_records, error = _fetch_region_history_with_status(lawd_cd, months)
+    if error:
+        return [], error
     tokens = _name_tokens(apt_name)
     if tokens:
         # 실거래 자료는 동명 단지 구분을 위해 "현대(고덕)"처럼 지역명을 괄호로 뒤에 붙이는
@@ -214,7 +307,21 @@ def fetch_apt_trade_history(lawd_cd: str, apt_name: str, months: int = 12) -> li
             if all(t in r["아파트명"] for t in tokens)
         ]
     all_records.sort(key=lambda r: r["계약일"])
-    return all_records
+    return all_records, None
+
+
+def fetch_apt_trade_history(lawd_cd: str, apt_name: str, months: int = 12) -> list[dict]:
+    """최근 N개월 실거래 내역 중 단지명이 일치하는 거래만 모아 계약일 오름차순으로 반환."""
+    records, _ = fetch_apt_trade_history_with_status(lawd_cd, apt_name, months=months)
+    return records
+
+
+def list_apt_names_with_status(lawd_cd: str, months: int = 12) -> tuple[list[str], str | None]:
+    """해당 지역 실제 거래 단지명 목록과 API 오류 상태를 함께 반환한다."""
+    all_records, error = _fetch_region_history_with_status(lawd_cd, months)
+    if error:
+        return [], error
+    return sorted({r["아파트명"] for r in all_records}), None
 
 
 def list_apt_names(lawd_cd: str, months: int = 12) -> list[str]:
@@ -222,8 +329,8 @@ def list_apt_names(lawd_cd: str, months: int = 12) -> list[str]:
 
     "고덕현대"처럼 사용자가 실제 등록명("현대(고덕)")을 몰라 못 찾는 문제를 원천 차단한다:
     자유 입력 대신 이 목록에서 고르게 하면 오타·어순 문제 자체가 생기지 않는다."""
-    all_records = _fetch_region_history(lawd_cd, months)
-    return sorted({r["아파트명"] for r in all_records})
+    names, _ = list_apt_names_with_status(lawd_cd, months=months)
+    return names
 
 
 def find_similar_apt_names(lawd_cd: str, apt_name: str, months: int = 12, limit: int = 8) -> list[str]:

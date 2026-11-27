@@ -5,7 +5,11 @@ from utils.charts import render_trend_with_stats
 from utils.config import HAS_MOLIT
 from utils.css_loader import apply_custom_css
 from utils.expert_template import render_expert_page
-from utils.realestate_fetcher import LAWD_CODES, fetch_apt_trade_history, list_apt_names
+from utils.realestate_fetcher import (
+    LAWD_CODES,
+    fetch_apt_trade_history_with_status,
+    list_apt_names_with_status,
+)
 
 apply_custom_css()
 
@@ -53,8 +57,16 @@ def _render_price_lookup():
         st.caption(f"{sido} {sigungu}의 실제 단지명 목록을 불러온 뒤 검색할 수 있습니다 (최근 1년 기준).")
         if st.button("📋 단지 목록 불러오기", key="re_load_names_btn"):
             with st.spinner(f"{sido} {sigungu} 단지 목록 불러오는 중..."):
-                names = list_apt_names(lawd_cd, months=12)
-            st.session_state["re_apt_options"] = {"lawd_cd": lawd_cd, "names": names}
+                names, error = list_apt_names_with_status(lawd_cd, months=12)
+            st.session_state["re_apt_options"] = {"lawd_cd": lawd_cd, "names": names, "error": error}
+            st.rerun()
+        return
+
+    load_error = loaded.get("error")
+    if load_error:
+        st.warning(f"⚠️ {load_error} 잠시 후 다시 시도해 주세요.")
+        if st.button("🔄 다시 시도", key="re_retry_names_btn"):
+            st.session_state.pop("re_apt_options", None)
             st.rerun()
         return
 
@@ -81,14 +93,17 @@ def _render_price_lookup():
         else:
             months = period_months[period_idx]
             with st.spinner(f"{sido} {sigungu} '{apt_name}' 실거래 내역 조회 중... (최대 {period_labels[period_idx]}치)"):
-                records = fetch_apt_trade_history(lawd_cd, apt_name, months=months)
+                records, error = fetch_apt_trade_history_with_status(lawd_cd, apt_name, months=months)
             st.session_state["re_result"] = {
-                "records": records, "apt_name": apt_name, "sido": sido, "sigungu": sigungu,
+                "records": records, "error": error, "apt_name": apt_name, "sido": sido, "sigungu": sigungu,
                 "period_label": period_labels[period_idx],
             }
 
     result = st.session_state.get("re_result")
     if not result:
+        return
+    if result.get("error"):
+        st.warning(f"⚠️ {result['error']} 잠시 후 다시 시도해 주세요.")
         return
     period_idx = period_labels.index(result["period_label"])
 
